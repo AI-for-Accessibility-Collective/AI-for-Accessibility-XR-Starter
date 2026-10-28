@@ -1,0 +1,25 @@
+{
+  "name": "hackathon-xr-starter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Starter code for building small apps for Mentra Live smart glasses, adapted to each person by the AI for Accessibility Toolkit.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/starter/main.ts",
+    "start": "bun src/starter/main.ts",
+    "tunnel": "bun scripts/tunnel.ts",
+    "check": "bun scripts/check.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "update-toolkit": "bun scripts/update-toolkit.ts"
+  },
+  "dependencies": {
+    "@ai4a11y/toolkit": "file:./vendor/ai4a11y-toolkit",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.9.2"
+  }
+}

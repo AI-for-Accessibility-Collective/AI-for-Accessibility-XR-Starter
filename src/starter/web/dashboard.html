@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XR Starter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='10' width='12' height='10' rx='4' fill='%231f5fd6'/%3E%3Crect x='18' y='10' width='12' height='10' rx='4' fill='%231f5fd6'/%3E%3Crect x='13' y='13' width='6' height='2' fill='%231f5fd6'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #eef0f4; --border: #d6dae1;
+    --text: #14181f; --muted: #4d5766; --accent: #1f5fd6; --on-accent: #ffffff;
+    --ok: #146c3c; --ok-soft: #e1f3e8; --warn: #8a5800; --warn-soft: #fdf0d3;
+    --danger: #b3261e; --danger-soft: #fce8e6; --you: #e8eefc; --app: #ffffff;
+    --radius: 14px; --focus: 0 0 0 3px #ffbf47; --ring: #ffbf47;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116; --surface: #161b22; --surface-2: #1f2630; --border: #2e3744;
+      --text: #eef2f7; --muted: #a6b0bf; --accent: #5a95ff; --on-accent: #08111f;
+      --ok: #4fc58c; --ok-soft: #12291e; --warn: #f2b84b; --warn-soft: #2d230f;
+      --danger: #ff7b72; --danger-soft: #30161a; --you: #1b2638; --app: #161b22;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  :focus-visible { outline: none; box-shadow: var(--focus); border-radius: 6px; }
+  .skip { position: absolute; left: -999px; } .skip:focus { left: 16px; top: 8px; background: var(--surface); padding: 8px 12px; z-index: 9; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .bar { max-width: 1240px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .bar h1 { font-size: 20px; margin: 0; }
+  .bar .file { color: var(--muted); font-size: 14px; }
+  .grow { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--border); border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 15px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .pill[data-phase="listening"] .dot { background: var(--ok); }
+  .pill[data-phase="thinking"] .dot { background: var(--warn); }
+  .pill[data-phase="speaking"] .dot { background: var(--accent); }
+  button, select, input[type=text] { font: inherit; }
+  button { border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: 10px; padding: 8px 16px; min-height: 44px; cursor: pointer; font-weight: 600; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  button.stop { background: var(--danger); color: #fff; border-color: transparent; }
+  button.quiet { background: transparent; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  main { max-width: 1240px; margin: 0 auto; padding: 20px; display: grid; gap: 20px; grid-template-columns: minmax(320px, 400px) 1fr; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .col { display: grid; gap: 20px; }
+  section.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .card-head h2 { font-size: 18px; margin: 0; }
+  .badge { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); }
+  .problem { max-width: 1240px; margin: 12px auto 0; padding: 0 20px; }
+  .problem div { background: var(--danger-soft); border: 1px solid var(--danger); border-radius: 10px; padding: 10px 14px; }
+  .tabs { display: flex; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 12px; margin-bottom: 14px; }
+  .tabs button { flex: 1; border: none; background: transparent; }
+  .tabs button[aria-selected="true"] { background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  .qr { background: #fff; padding: 8px; border-radius: 10px; width: 210px; margin: 6px auto 10px; }
+  .qr svg { display: block; width: 100%; height: auto; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  .addr { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
+  .wide { width: 100%; }
+  .sim video { width: 100%; border-radius: 10px; background: #000; aspect-ratio: 16/9; object-fit: cover; }
+  .sim .flash { animation: flash .35s ease-out; } @keyframes flash { from { filter: brightness(2.5); } to { filter: none; } }
+  @media (prefers-reduced-motion: reduce) { .sim .flash { animation: none; } }
+  .meter { flex: 1; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .1s; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .glasses-button { width: 100%; min-height: 60px; font-size: 18px; margin-top: 10px; }
+  .led { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border); vertical-align: middle; }
+  details.more { margin-top: 12px; }
+  details.more summary { cursor: pointer; color: var(--muted); min-height: 32px; }
+  details.more > div { display: grid; gap: 8px; padding-top: 6px; }
+  fieldset { border: none; padding: 0; margin: 0; } legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+  label.opt { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+  /* conversation */
+  .convo { display: flex; flex-direction: column; min-height: 70vh; }
+  #log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 62vh; flex: 1; }
+  #log li { border-radius: 12px; padding: 8px 12px; border: 1px solid var(--border); max-width: 92%; }
+  #log li .who { font-size: 13px; font-weight: 600; color: var(--muted); display: block; }
+  #log li.you { background: var(--you); align-self: flex-end; }
+  #log li.app { background: var(--app); }
+  #log li.app .text { font-size: 18px; }
+  #log li.ignored { opacity: .7; }
+  #log li.info, #log li.button { background: transparent; border-style: dashed; color: var(--muted); font-size: 14px; align-self: center; text-align: center; }
+  #log li.warn { background: var(--warn-soft); border-color: var(--warn); font-size: 14px; }
+  #log li.error { background: var(--danger-soft); border-color: var(--danger); font-size: 14px; white-space: pre-wrap; }
+  #log li.photo img { max-width: 260px; border-radius: 8px; display: block; margin-top: 4px; }
+  #log:empty::before { content: "Press Start, then talk or type."; color: var(--muted); }
+  form.say { display: flex; gap: 10px; margin-top: 14px; }
+  form.say input { flex: 1; min-width: 0; min-height: 44px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 12px; }
+  /* profile */
+  .need { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .need label { font-weight: 600; }
+  .need input[type=range] { width: 140px; vertical-align: middle; }
+  .need select { min-height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--border); }
+  .chips button { min-height: 36px; padding: 4px 12px; border-radius: 999px; font-weight: 500; font-size: 14px; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .switch button { min-width: 72px; }
+  .switch button[aria-checked="true"] { background: var(--ok); color: #fff; border-color: transparent; }
+  footer { max-width: 1240px; margin: 0 auto; padding: 0 20px 30px; color: var(--muted); font-size: 14px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  /* the tour */
+  .tour-dim { position: fixed; inset: 0; z-index: 50; background: rgba(10, 14, 20, .55); }
+  .tour-spot { position: fixed; z-index: 50; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 4px var(--ring), 0 0 0 9999px rgba(10, 14, 20, .55); transition: left .25s, top .25s, width .25s, height .25s; }
+  .tour-card { position: fixed; z-index: 51; width: min(360px, calc(100vw - 32px)); background: var(--surface); color: var(--text); border: 2px solid var(--ring); border-radius: 14px; padding: 16px 18px; box-shadow: 0 12px 32px rgba(0,0,0,.35); transition: left .25s, top .25s; }
+  .tour-card h3 { margin: 2px 0 6px; font-size: 19px; }
+  .tour-card h3:focus { box-shadow: none; }
+  .tour-card p { margin: 0 0 12px; }
+  .tour-count { font-size: 13px; color: var(--muted); }
+  .tour-close { position: absolute; top: 8px; right: 8px; min-height: 36px; padding: 2px 10px; background: transparent; border: none; }
+  .tour-do { width: 100%; margin-bottom: 8px; }
+  .tour-note { font-size: 14px; color: var(--muted); margin: -4px 0 10px; }
+  .tour-nav { display: flex; gap: 8px; justify-content: flex-end; }
+  .tour-card::before { content: ""; position: absolute; width: 14px; height: 14px; background: var(--surface); border: 2px solid var(--ring); transform: rotate(45deg); }
+  .tour-card[data-side="below"]::before { top: -9px; left: calc(var(--ax) - 7px); border-right: none; border-bottom: none; }
+  .tour-card[data-side="above"]::before { bottom: -9px; left: calc(var(--ax) - 7px); border-left: none; border-top: none; }
+  .tour-card[data-side="right"]::before { left: -9px; top: calc(var(--ay) - 7px); border-top: none; border-right: none; }
+  .tour-card[data-side="left"]::before { right: -9px; top: calc(var(--ay) - 7px); border-bottom: none; border-left: none; }
+  .tour-card[data-side="none"]::before { display: none; }
+  @media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#log">Skip to the conversation</a>
+<header>
+  <div class="bar">
+    <div id="app-info">
+      <h1 id="app-name">XR Starter</h1>
+      <div class="file"><code>src/app.ts</code></div>
+    </div>
+    <div class="grow"></div>
+    <span class="pill" id="phase" data-phase="off" role="status"><span class="dot" aria-hidden="true"></span><span id="phase-text">Off</span></span>
+    <button id="tour-btn" class="quiet">Tour</button>
+    <button id="startstop" class="primary" disabled>▶ Start</button>
+  </div>
+</header>
+<div class="problem" id="problem" role="alert" hidden><div></div></div>
+
+<main>
+  <div class="col">
+    <section class="card" id="card-glasses" aria-labelledby="h-device">
+      <div class="card-head"><h2 id="h-device">Glasses</h2><span id="connected" class="badge">Not connected</span></div>
+      <div class="tabs" role="tablist" aria-label="What acts as the glasses">
+        <button role="tab" id="tab-sim" aria-selected="true" aria-controls="pane-sim">Laptop simulator</button>
+        <button role="tab" id="tab-glasses" aria-selected="false" aria-controls="pane-glasses">Real glasses</button>
+      </div>
+
+      <div id="pane-sim" role="tabpanel" aria-labelledby="tab-sim" class="sim">
+        <button id="sim-toggle" class="primary wide">Use this laptop as the glasses</button>
+        <div id="sim-body" hidden>
+          <video id="sim-video" muted playsinline aria-label="Webcam preview: the simulated glasses camera"></video>
+          <div class="row small" style="margin-top:6px"><span>Mic</span><div class="meter" aria-hidden="true"><i id="sim-meter"></i></div><span id="sim-mic-state" class="muted"></span></div>
+          <button id="sim-talk" class="glasses-button" hidden>🎙 Hold to talk</button>
+          <button id="sim-button" class="glasses-button">◉ Glasses button</button>
+          <details class="more small">
+            <summary>Options</summary>
+            <div>
+              <fieldset>
+                <legend>The mic listens</legend>
+                <label class="opt"><input type="radio" name="talk" value="always" checked> Like the glasses: while the app waits</label>
+                <label class="opt"><input type="radio" name="talk" value="hold"> While I hold Talk (for a noisy room)</label>
+              </fieldset>
+              <div class="row"><button id="sim-long">Long-press the glasses button</button></div>
+              <div>Glasses light <span class="led" id="sim-led" aria-label="Glasses light: off"></span></div>
+              <div class="row"><button id="sim-off">Stop using the laptop</button></div>
+            </div>
+          </details>
+        </div>
+        <p id="sim-error" class="small" role="alert"></p>
+      </div>
+
+      <div id="pane-glasses" role="tabpanel" aria-labelledby="tab-glasses" hidden>
+        <p class="small" style="margin-top:0">Scan this with the phone’s Camera app.</p>
+        <div class="qr" id="qr" role="img" aria-label="QR code that connects the XR Starter phone app to this laptop"></div>
+        <details class="more small">
+          <summary>The phone cannot connect?</summary>
+          <div>
+            <span>Type this into XR Starter:</span>
+            <div class="addr mono"><span class="sr">Address: </span><span id="addr">…</span><br>Code: <b id="token">…</b></div>
+            <span id="addr-how" class="muted"></span>
+            <span>Or run <code>bun run tunnel</code> in a second terminal, then scan the new code.</span>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card" id="card-profile" aria-labelledby="h-profile">
+      <div class="card-head"><h2 id="h-profile">Profile</h2><span class="small muted">AI for Accessibility Toolkit</span></div>
+      <div id="needs"></div>
+      <div class="chips" id="examples" role="group" aria-label="Example profiles"></div>
+      <div class="switch" id="adapt-row">
+        <span id="adapt-label">Adapt to the profile</span>
+        <button id="adapt" role="switch" aria-checked="true" aria-labelledby="adapt-label">On</button>
+      </div>
+      <p id="other-needs" class="small muted" hidden></p>
+    </section>
+  </div>
+
+  <section class="card convo" id="card-convo" aria-labelledby="h-convo">
+    <div class="card-head"><h2 id="h-convo">Conversation</h2><button type="button" id="clear" class="quiet small">Clear</button></div>
+    <ul id="log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></ul>
+    <form class="say" id="say-form">
+      <label for="say" class="sr">Type what the wearer would say</label>
+      <input id="say" type="text" placeholder="Type what you would say" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  </section>
+</main>
+<footer>
+  <span id="gemini-status"></span>
+  <label class="opt"><input type="checkbox" id="announce" checked> Screen readers announce new lines</label>
+</footer>
+
+<div id="tour" hidden>
+  <div class="tour-dim" hidden></div>
+  <div class="tour-spot" hidden></div>
+  <div class="tour-card" role="dialog" aria-labelledby="tour-title" aria-describedby="tour-text">
+    <div class="tour-count" id="tour-count"></div>
+    <h3 id="tour-title" tabindex="-1"></h3>
+    <p id="tour-text"></p>
+    <button id="tour-do" class="primary tour-do" hidden></button>
+    <p id="tour-note" class="tour-note"></p>
+    <div class="tour-nav">
+      <button id="tour-back">Back</button>
+      <button id="tour-next" class="primary">Next</button>
+    </div>
+    <button id="tour-close" class="tour-close" aria-label="Close the tour">✕</button>
+  </div>
+</div>
+<script type="module" src="/web/dashboard.js"></script>
+</body>
+</html>

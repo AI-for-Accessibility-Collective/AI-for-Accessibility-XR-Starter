@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "XR Starter",
+    "slug": "xr-starter-phone",
+    "scheme": "xrstarter",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "edu.mit.media.xrstarter",
+      "infoPlist": {
+        "UIBackgroundModes": ["bluetooth-central", "audio"],
+        "NSBluetoothAlwaysUsageDescription": "XR Starter connects to your smart glasses over Bluetooth.",
+        "NSBluetoothPeripheralUsageDescription": "XR Starter connects to your smart glasses over Bluetooth.",
+        "NSMicrophoneUsageDescription": "XR Starter passes what you say through the glasses microphone to the app on your laptop.",
+        "NSLocalNetworkUsageDescription": "XR Starter connects to the app running on a laptop on your network.",
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true, "NSAllowsLocalNetworking": true }
+      }
+    },
+    "android": {
+      "package": "edu.mit.media.xrstarter",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "./plugins/withAndroid16KbPageSize",
+      "./plugins/withPodsDeploymentTarget",
+      ["@mentra/bluetooth-sdk", { "node": true }],
+      [
+        "expo-build-properties",
+        {
+          "ios": { "deploymentTarget": "15.5" },
+          "android": {
+            "minSdkVersion": 33,
+            "usesCleartextTraffic": true,
+            "packagingOptions": {
+              "exclude": ["**/libcoder.so"],
+              "pickFirst": ["**/libc++_shared.so", "**/libonnxruntime.so", "**/libonnxruntime4j_jni.so"]
+            }
+          }
+        }
+      ],
+      "expo-audio"
+    ]
+  }
+}
