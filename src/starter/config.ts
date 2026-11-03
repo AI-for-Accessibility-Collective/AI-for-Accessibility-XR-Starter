@@ -49,6 +49,12 @@ export const config = {
   // (the tunnel's address when `bun run tunnel` is running, else this laptop's
   // Wi-Fi address).
   publicUrl: text('PUBLIC_URL', '').replace(/\/+$/, ''),
+  // Where people get the XR Starter phone app. The dashboard shows these as
+  // QR codes. Android: the newest APK in this repo's GitHub Releases
+  // (.github/workflows/android-apk.yml). iPhone: the TestFlight public link,
+  // once the organiser has one (phone/README.md). Empty: not offered.
+  androidAppUrl: text('ANDROID_APP_URL', 'https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-XR-Starter/releases/latest/download/XR-Starter.apk'),
+  iosAppUrl: text('IOS_APP_URL', ''),
   // How a photo travels from the glasses. 'auto': over the glasses' Wi-Fi
   // when it can reach this laptop, otherwise through the phone over
   // Bluetooth. 'ble': through the phone (slower, needs no Wi-Fi).

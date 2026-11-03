@@ -16,13 +16,13 @@
 import { defineApp, type Glasses } from './starter/index.ts';
 
 export default defineApp({
-  name: 'Hello Glasses',
+  name: 'Starter assistant',
 
   // Who the AI is in this app. Added to g.ai requests.
-  instructions: 'You are a friendly helper on smart glasses. Answer in one or two short sentences.',
+  instructions: 'You are an assistant on smart glasses. Answer in one or two short sentences.',
 
   async onStart(g) {
-    await g.say('Hi. I am listening. Ask me a question, or press the button and I will describe what is in front of you.');
+    await g.say('Ready. Ask a question, or press the button and I will describe what is ahead.');
   },
 
   async onSpeech(text, g) {

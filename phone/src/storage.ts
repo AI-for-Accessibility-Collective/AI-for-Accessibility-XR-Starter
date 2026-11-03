@@ -1,5 +1,6 @@
-// What the phone remembers between launches: which laptop to connect to, and
-// which glasses. Plain JSON files in the app's documents folder.
+// What the phone remembers between launches: which laptop to connect to,
+// which glasses, and whether the phone acts as the glasses. Plain JSON files
+// in the app's documents folder.
 
 import { File, Paths } from 'expo-file-system';
 import type { Device } from '@mentra/bluetooth-sdk';
@@ -31,6 +32,19 @@ function save(name: string, value: unknown): void {
 export const laptopStore = {
   load: () => load<Laptop>('laptop.json'),
   save: (laptop: Laptop | null) => save('laptop.json', laptop),
+};
+
+// 'glasses': the phone links the glasses. 'phone': the phone acts as the glasses.
+export type Mode = 'glasses' | 'phone';
+export const modeStore = {
+  load: (): Mode => (load<Mode>('mode.json') === 'phone' ? 'phone' : 'glasses'),
+  save: (mode: Mode) => save('mode.json', mode),
+};
+
+// As the glasses: whether the words show on the screen (Text on / Text off).
+export const showTextStore = {
+  load: (): boolean => load<boolean>('show-text.json') === true,
+  save: (on: boolean) => save('show-text.json', on),
 };
 
 // The shape useMentraBluetooth wants, so it reconnects to the same glasses on its own.

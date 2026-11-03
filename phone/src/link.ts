@@ -7,6 +7,14 @@
 //   laptop  ──"photo"──▶  glasses take it and upload it to the laptop (over Wi-Fi, or through this phone)
 //   glasses button  ──▶  laptop
 //
+// With `phone` set ("Use this phone"), the phone stands in for the glasses
+// and the laptop sees a simulator:
+//
+//   phone mic       ──PCM──▶  laptop      (through the same SDK event)
+//   laptop  ──audio clip──▶  phone speaker
+//   laptop  ──"photo"──▶  phone camera, then the phone uploads it
+//   on-screen button  ──▶  laptop
+//
 // Adapted from the wearable-extension project (phone/src/useGuideLink.ts),
 // where each rule below was learned on real glasses.
 
@@ -15,8 +23,10 @@ import { Platform } from 'react-native';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import BluetoothSdk from '@mentra/bluetooth-sdk';
-import type { DeviceState, DownMessage, UpMessage } from '../../src/starter/protocol.ts';
+import { File } from 'expo-file-system';
+import type { DeviceState, DownMessage, LightColor, UpMessage } from '../../src/starter/protocol.ts';
 import type { Laptop } from './storage';
+import { announcing } from './a11y';
 
 // Repeated from protocol.ts (a type-only import cannot carry values).
 const DEVICE_WS_PATH = '/device';
@@ -31,16 +41,35 @@ export type LinkStatus = 'none' | 'connecting' | 'connected' | 'refused' | 'offl
 
 export interface Link {
   status: LinkStatus;
+  // What the laptop welcomed this phone as. While the phone switches between
+  // the two, the old connection can still read 'connected' for a moment.
+  connectedAs: 'phone' | 'glasses' | null;
   detail: string;
   state: DeviceState | null;
+  light: LightColor | null; // the glasses light, shown on screen when the phone is the glasses
   setActive: (on: boolean) => void;
   type: (text: string) => void;
+  button: (press: 'short' | 'long') => void;
 }
 
-export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wifi: boolean | null; battery: number | null }): Link {
+// What the phone needs when it acts as the glasses.
+export interface PhoneParts {
+  takePhoto: () => Promise<string>; // the photo's file URI
+}
+
+export function useLink(
+  laptop: Laptop | null,
+  glasses: { connected: boolean; wifi: boolean | null; battery: number | null },
+  phone: PhoneParts | null,
+): Link {
   const [status, setStatus] = useState<LinkStatus>(laptop ? 'connecting' : 'none');
   const [detail, setDetail] = useState('');
+  const [connectedAs, setConnectedAs] = useState<'phone' | 'glasses' | null>(null);
   const [state, setState] = useState<DeviceState | null>(null);
+  const [light, setLight] = useState<LightColor | null>(null);
+  const asPhone = phone != null;
+  const phoneRef = useRef(phone);
+  phoneRef.current = phone;
 
   const wsRef = useRef<WebSocket | null>(null);
   const welcomedRef = useRef(false);
@@ -69,7 +98,7 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
       try {
         if (on) {
           if (!cueRef.current) {
-            const cue = createAudioPlayer({ uri: `${laptop.url}/sounds/thinking.wav` });
+            const cue = createAudioPlayer({ uri: `${laptop.url}/sounds/thinking.wav` }, { keepAudioSessionActive: asPhone });
             cue.loop = true;
             cue.volume = 0.5;
             cueRef.current = cue;
@@ -81,7 +110,7 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
         console.warn('thinking sound failed', e);
       }
     },
-    [laptop],
+    [laptop, asPhone],
   );
 
   // ── Speaking ──────────────────────────────────────────────────────────────
@@ -152,7 +181,9 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
           return;
         }
         try {
-          player = createAudioPlayer({ uri: laptop.url + m.audioPath }, { updateInterval: 200 });
+          // keepAudioSessionActive: when a clip ends, expo-audio would
+          // otherwise switch the audio session off, and the phone mic with it.
+          player = createAudioPlayer({ uri: laptop.url + m.audioPath }, { updateInterval: 200, keepAudioSessionActive: asPhone });
           playerRef.current = player;
           // Speed from the profile, pitch kept natural.
           if (rate !== 1) player.setPlaybackRate(rate, 'high');
@@ -165,16 +196,33 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
           finish(); // no player: the line is skipped
         }
       }),
-    [laptop, stopAudio, setCue],
+    [laptop, asPhone, stopAudio, setCue],
   );
 
   // ── Photo ─────────────────────────────────────────────────────────────────
   // The glasses upload straight to the laptop over Wi-Fi when they can. When
   // they cannot (no Wi-Fi, or the laptop is out of reach), the SDK sends the
   // photo through this phone over Bluetooth and the phone uploads it.
+  // When the phone is the glasses, it takes the photo itself and uploads it
+  // over the network, as a form post with the photo and its requestId.
   const photo = useCallback(
     async (m: Extract<DownMessage, { t: 'photo' }>): Promise<void> => {
       if (!laptop) throw new Error('no laptop');
+      if (phoneRef.current) {
+        const uri = await phoneRef.current.takePhoto();
+        try {
+          const form = new FormData();
+          form.append('requestId', m.requestId);
+          form.append('photo', { uri, name: `${m.requestId}.jpg`, type: 'image/jpeg' } as unknown as Blob);
+          const res = await fetch(laptop.url + m.uploadPath, { method: 'POST', body: form, headers: { Authorization: `Bearer ${laptop.token}` } });
+          if (!res.ok) throw new Error(`the upload failed (${res.status})`);
+        } finally {
+          try {
+            new File(uri).delete();
+          } catch {}
+        }
+        return;
+      }
       if (!glassesRef.current.connected) throw new Error('the glasses are not connected to the phone');
       await BluetoothSdk.requestPhoto({
         requestId: m.requestId,
@@ -201,12 +249,19 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
     let closed = false;
     let attempt = 0;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let lightTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // A plain playback session, on purpose. The glasses are a Bluetooth
-    // media output (A2DP, like headphones). A recording session switches iOS
-    // to hands-free-call Bluetooth, and then the voice does not reach the
-    // glasses. The phone does not record: the glasses mic arrives as data.
-    void setAudioModeAsync({ allowsRecording: false, shouldPlayInBackground: true, playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+    // With the glasses: a plain playback session, on purpose. The glasses are
+    // a Bluetooth media output (A2DP, like headphones). A recording session
+    // switches iOS to hands-free-call Bluetooth, and then the voice does not
+    // reach the glasses. The phone does not record: the glasses mic arrives
+    // as data.
+    // As the glasses: the phone records and plays, out of its loudspeaker.
+    void setAudioModeAsync(
+      asPhone
+        ? { allowsRecording: true, shouldPlayInBackground: false, playsInSilentMode: true, interruptionMode: 'mixWithOthers', shouldRouteThroughEarpiece: false }
+        : { allowsRecording: false, shouldPlayInBackground: true, playsInSilentMode: true, interruptionMode: 'duckOthers' },
+    ).catch(() => {});
 
     const reply = (id: number, ok: boolean, detail?: string) => send({ t: 'reply', id, ok, detail });
     const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -219,6 +274,8 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
     let micConfigured = false;
     const applyMic = (on: boolean): void => {
       micChain = micChain.then(async () => {
+        // false: the phone's own mic, through the same mic_pcm event.
+        if (asPhone) return BluetoothSdk.setMicState(on, false).catch((e) => console.warn('setMicState failed', e));
         if (on && !micConfigured) {
           // Continuous audio with quiet input gated to silence: what the
           // laptop's utterance detector expects.
@@ -236,8 +293,9 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
           welcomedRef.current = true;
           attempt = 0;
           setStatus('connected');
+          setConnectedAs(asPhone ? 'phone' : 'glasses');
           setDetail(m.app);
-          send({ t: 'glasses', ...glassesRef.current });
+          if (!asPhone) send({ t: 'glasses', ...glassesRef.current });
           break;
         case 'refused':
           setStatus('refused');
@@ -266,7 +324,11 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
           );
           break;
         case 'light':
-          void BluetoothSdk.rgbLedControl(`led-${Date.now()}`, null, m.color ? 'on' : 'off', m.color, m.color ? m.ms : 0, 0, 1).catch(() => {});
+          if (asPhone) {
+            if (lightTimer) clearTimeout(lightTimer);
+            setLight(m.color);
+            lightTimer = m.color ? setTimeout(() => setLight(null), m.ms) : null;
+          } else void BluetoothSdk.rgbLedControl(`led-${Date.now()}`, null, m.color ? 'on' : 'off', m.color, m.color ? m.ms : 0, 0, 1).catch(() => {});
           break;
       }
     };
@@ -274,6 +336,7 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
     const connect = (): void => {
       if (closed) return;
       setStatus((s) => (s === 'refused' ? s : 'connecting'));
+      setConnectedAs(null);
       welcomedRef.current = false;
       const ws = new WebSocket(laptop.url.replace(/^http/, 'ws') + DEVICE_WS_PATH);
       ws.binaryType = 'arraybuffer';
@@ -284,14 +347,18 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
       // must not reset the new connection.
       ws.onopen = () => {
         if (closed || wsRef.current !== ws) return;
-        send({
-          t: 'hello',
-          token: laptop.token,
-          device: 'glasses',
-          name: Platform.OS === 'ios' ? 'iPhone' : 'Android phone',
-          resume: activeRef.current,
-          glasses: glassesRef.current,
-        });
+        send(
+          asPhone
+            ? { t: 'hello', token: laptop.token, device: 'simulator', name: 'Phone simulator', camera: 'phone', resume: activeRef.current }
+            : {
+                t: 'hello',
+                token: laptop.token,
+                device: 'glasses',
+                name: Platform.OS === 'ios' ? 'iPhone' : 'Android phone',
+                resume: activeRef.current,
+                glasses: glassesRef.current,
+              },
+        );
       };
       ws.onmessage = (ev) => {
         if (closed || wsRef.current !== ws || typeof ev.data !== 'string') return;
@@ -303,6 +370,7 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
         if (closed || wsRef.current !== ws) return;
         wsRef.current = null;
         welcomedRef.current = false;
+        setConnectedAs(null);
         // The laptop reset its state when it lost us; match it.
         micOnRef.current = false;
         stopAudio();
@@ -313,7 +381,7 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
         if (ev.code === CLOSE_REPLACED) {
           activeRef.current = false;
           setStatus('replaced');
-          setDetail('Another device took over (the simulator, or another phone).');
+          setDetail('Another phone took over.');
           return;
         }
         setStatus('offline');
@@ -329,17 +397,20 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
     // Glasses mic → laptop, as raw binary frames.
     const mic = BluetoothSdk.addListener('mic_pcm', (event) => {
       const ws = wsRef.current;
-      if (!micOnRef.current || playingRef.current || cueOnRef.current || !welcomedRef.current) return;
+      // Also quiet while VoiceOver / TalkBack reads one of the app's messages (a11y.ts).
+      if (!micOnRef.current || playingRef.current || cueOnRef.current || !welcomedRef.current || announcing()) return;
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(event.pcm);
     });
-    // The glasses button → laptop.
+    // The glasses button → laptop. As the glasses, the phone sends its on-screen button instead.
     const button = BluetoothSdk.addListener('button_press', (event) => {
-      send({ t: 'button', press: event.pressType === 'long' ? 'long' : 'short', buttonId: event.buttonId });
+      if (!asPhone) send({ t: 'button', press: event.pressType === 'long' ? 'long' : 'short', buttonId: event.buttonId });
     });
 
     return () => {
       closed = true;
       if (retry) clearTimeout(retry);
+      if (lightTimer) clearTimeout(lightTimer);
+      setLight(null);
       clearInterval(ping);
       mic.remove();
       button.remove();
@@ -350,17 +421,19 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
       cueRef.current = null;
       void BluetoothSdk.setMicState(false).catch(() => {});
     };
-  }, [laptop, send, speak, photo, stopAudio, setCue]);
+  }, [laptop, asPhone, send, speak, photo, stopAudio, setCue]);
 
   // Keep the laptop told about the glasses.
   useEffect(() => {
-    send({ t: 'glasses', connected: glasses.connected, wifi: glasses.wifi, battery: glasses.battery });
-  }, [send, glasses.connected, glasses.wifi, glasses.battery]);
+    if (!asPhone) send({ t: 'glasses', connected: glasses.connected, wifi: glasses.wifi, battery: glasses.battery });
+  }, [send, asPhone, glasses.connected, glasses.wifi, glasses.battery]);
 
   return {
     status,
+    connectedAs,
     detail,
     state,
+    light,
     setActive: (on) => {
       if (!on) {
         // Stop means silence now, not after a round trip.
@@ -370,5 +443,6 @@ export function useLink(laptop: Laptop | null, glasses: { connected: boolean; wi
       send({ t: 'active', on });
     },
     type: (text) => send({ t: 'type', text }),
+    button: (press) => send({ t: 'button', press }),
   };
 }

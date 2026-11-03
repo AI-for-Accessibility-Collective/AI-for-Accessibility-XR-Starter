@@ -2,8 +2,8 @@
 //
 //   bun run dev examples/1-echo.ts
 //
-// Use it to check the microphone and the speaker, on the glasses or in the
-// simulator. No AI is called apart from writing down what you said.
+// Use it to check the microphone and the speaker, on the glasses or on the
+// phone. No AI is called apart from writing down what you said.
 //
 // Shows: onStart, onSpeech, g.say
 

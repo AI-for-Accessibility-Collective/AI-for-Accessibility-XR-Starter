@@ -3,8 +3,8 @@
 //   bun run dev                                  runs src/app.ts
 //   bun run dev examples/2-what-do-you-see.ts    runs an example instead
 //
-// In dev mode Bun restarts the server when you save a file. The phone and
-// the simulator reconnect on their own and carry on.
+// In dev mode Bun restarts the server when you save a file. The phone
+// reconnects on its own and carries on.
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';

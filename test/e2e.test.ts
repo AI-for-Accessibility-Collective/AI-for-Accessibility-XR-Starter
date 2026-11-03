@@ -202,6 +202,23 @@ describe('a running session', () => {
     dev = other;
   });
 
+  test('the phone as the glasses: photos come from the phone camera', async () => {
+    const phone = await FakeDevice.connect(port, { token: TOKEN, device: 'simulator', name: 'Phone simulator', camera: 'phone' });
+    await phone.next('welcome');
+    await until(() => dev.closed != null, 'the laptop simulator is closed');
+    dev = phone;
+    expect(runtime.dashState().device?.name).toBe('Phone simulator');
+    dev.send({ t: 'type', text: 'photo please' });
+    const req = await dev.next('photo');
+    const form = new FormData();
+    form.append('requestId', req.requestId);
+    form.append('photo', new Blob([new Uint8Array(1234).fill(7)], { type: 'image/jpeg' }), 'photo.jpg');
+    const res = await fetch(`http://localhost:${port}${req.uploadPath}`, { method: 'POST', body: form, headers: { Authorization: `Bearer ${TOKEN}` } });
+    expect(res.status).toBe(200);
+    dev.send({ t: 'reply', id: req.id, ok: true });
+    expect((await dev.next('speak')).text).toBe('Got 1234 bytes from the phone.');
+  });
+
   test('Stop: the mic goes off, and lines are no longer spoken', async () => {
     dev.send({ t: 'active', on: false });
     await dev.next('mic', (m) => !m.on);

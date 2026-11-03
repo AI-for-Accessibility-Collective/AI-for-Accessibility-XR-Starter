@@ -1,8 +1,10 @@
 // The wire between a device and this server: one WebSocket at /device.
 //
-// Two kinds of device speak it, and the server treats them the same:
+// These devices speak it, and the server treats them the same:
 //   - the phone app in phone/, which holds the Bluetooth link to the glasses
-//   - the simulator on the dashboard, which uses the laptop's mic, webcam and speaker
+//   - the phone app as a simulator ("Use this phone"), which uses the
+//     phone's mic, camera and speaker and an on-screen button
+//   - the fake device in test/helpers.ts
 //
 // JSON text frames carry the messages below. Binary frames going up are
 // microphone audio: 16 kHz, 16-bit, mono, little-endian PCM.
@@ -37,7 +39,8 @@ export type UpMessage =
   // `resume`: the device was running before the connection dropped (or the
   // server restarted after a code change), so start again straight away.
   // `glasses`: their state right now, so an app that resumes at once knows it.
-  | { t: 'hello'; token: string; device: DeviceKind; name: string; resume?: boolean; glasses?: { connected: boolean; wifi: boolean | null; battery: number | null } }
+  // `camera` (simulators): which camera stands in for the glasses camera.
+  | { t: 'hello'; token: string; device: DeviceKind; name: string; resume?: boolean; camera?: 'webcam' | 'phone'; glasses?: { connected: boolean; wifi: boolean | null; battery: number | null } }
   | { t: 'glasses'; connected: boolean; wifi: boolean | null; battery: number | null }
   | { t: 'active'; on: boolean }
   // Typed instead of spoken.

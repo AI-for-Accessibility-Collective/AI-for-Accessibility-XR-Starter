@@ -47,7 +47,8 @@ export interface GlassesInfo {
 // One connected device, as the server hands it over.
 export interface DeviceLink {
   kind: DeviceKind;
-  name: string;
+  name: string; // 'Laptop simulator', 'Phone simulator', or the phone's name
+  camera: Photo['from'];
   glasses: GlassesInfo | null;
   send(m: DownMessage): void;
   close(code: number, reason: string): void;
@@ -66,7 +67,7 @@ export type DashEvent =
   | { type: 'state'; state: DashState }
   | { type: 'you'; text: string; via: 'voice' | 'typed'; at: number; ignored?: string }
   | { type: 'app'; text: string; at: number; voice: 'gemini' | 'device' }
-  | { type: 'photo'; id: string; from: 'glasses' | 'webcam'; at: number; kb: number }
+  | { type: 'photo'; id: string; from: Photo['from']; at: number; kb: number }
   | { type: 'button'; press: 'short' | 'long'; at: number }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; text: string; at: number }
   | { type: 'profile' };
@@ -115,7 +116,7 @@ class PhotoImpl implements Photo {
   private cached: string | null = null;
   constructor(
     readonly jpeg: Buffer,
-    readonly from: 'glasses' | 'webcam',
+    readonly from: Photo['from'],
     readonly id: string,
     readonly takenAt = Date.now(),
   ) {}
@@ -268,7 +269,7 @@ export class Runtime {
 
   start(): void {
     if (this.active) return;
-    if (!this.device) return this.log('warn', 'Connect the glasses or open the simulator first, then press Start.');
+    if (!this.device) return this.log('warn', 'Connect the phone first: in XR Starter, scan the QR code on the dashboard. Then press Start.');
     this.active = true;
     this.gen++;
     this.g = this.makeGlasses(this.gen);
@@ -277,7 +278,7 @@ export class Runtime {
     this.lastActivity = Date.now();
     this.ai.forget();
     this.segmenter.reset();
-    this.log('info', `Started (${this.device.kind === 'glasses' ? 'real glasses' : 'simulator'})`);
+    this.log('info', `Started (${this.device.kind === 'glasses' ? 'real glasses' : this.device.name.toLowerCase()})`);
     this.updateMic();
     this.pushState();
     if (this.app.onStart) void this.run('onStart', () => this.app.onStart!(this.g));
@@ -541,7 +542,7 @@ export class Runtime {
     );
     try {
       const jpeg = await arrived;
-      const photo = new PhotoImpl(jpeg, link.kind === 'glasses' ? 'glasses' : 'webcam', randomId(6));
+      const photo = new PhotoImpl(jpeg, link.camera, randomId(6));
       this.photos.set(photo.id, photo);
       for (const old of [...this.photos.keys()].slice(0, -30)) this.photos.delete(old);
       this.emit({ type: 'photo', id: photo.id, from: photo.from, at: photo.takenAt, kb: Math.round(jpeg.length / 1024) });
@@ -591,7 +592,7 @@ export class Runtime {
     if (this.graceTimer) clearTimeout(this.graceTimer);
     this.graceTimer = null;
     link.send({ t: 'welcome', app: this.app.name });
-    this.log('info', `Connected: ${link.kind === 'glasses' ? `phone with the glasses (${link.name})` : 'laptop simulator'}`);
+    this.log('info', `Connected: ${link.kind === 'glasses' ? `phone with the glasses (${link.name})` : link.name.toLowerCase()}`);
     this.updateMic(true);
     this.pushState();
     if (!this.active && resume && (this.lastStop === 'never' || this.lastStop === 'device')) this.start();
@@ -601,7 +602,7 @@ export class Runtime {
     if (this.device !== link) return;
     this.device = null;
     this.dropRequests('the device disconnected');
-    this.log('warn', `Disconnected: ${link.kind === 'glasses' ? 'the phone' : 'the simulator'}`);
+    this.log('warn', `Disconnected: ${link.kind === 'glasses' ? 'the phone' : `the ${link.name.toLowerCase()}`}`);
     if (this.active) {
       this.graceTimer = setTimeout(() => this.stop('Stopped: the device did not come back', 'device'), DISCONNECT_GRACE_MS);
     }

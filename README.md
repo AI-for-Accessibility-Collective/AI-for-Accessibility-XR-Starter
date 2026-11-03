@@ -1,3 +1,5 @@
+<img src="docs/logo.png" alt="ai4a11y" width="220">
+
 # XR Starter
 
 Starter code for building a small app for **Mentra Live** smart glasses in an
@@ -13,7 +15,8 @@ speech to it.
 What you get:
 
 - A working app in `src/app.ts`. Run it first, then change it.
-- A **simulator**: your laptop's mic, webcam and speakers stand in for the glasses.
+- A **phone simulator**: in the XR Starter phone app, the phone's camera, mic
+  and speaker stand in for the glasses, with a round button on the screen.
   Use it while another team has the glasses.
 - Five short examples in `examples/`.
 - A dashboard in your browser that shows what the app hears, says and sees,
@@ -25,13 +28,14 @@ What you get:
 2. `bun run dev` runs it on your laptop. The starter turns speech into text,
    makes the app's voice, and calls Gemini.
 3. A phone runs the **XR Starter** app. It links the glasses to your laptop
-   over Bluetooth and Wi-Fi. The organiser brings the glasses and the phone.
+   over Bluetooth and Wi-Fi, or it acts as the glasses itself. The organiser
+   brings the glasses and the phone.
 4. The toolkit reads the wearer's profile, for example "speak slower" or "one
    step at a time", and the starter shapes the app's speech to fit.
 
 ```
 glasses ⇄ Bluetooth ⇄ phone (XR Starter app) ⇄ network ⇄ your laptop (bun run dev, src/app.ts)
-                                                          your browser: dashboard + simulator
+                                                          your browser: dashboard
 ```
 
 ## 1. Set up (about 10 minutes)
@@ -56,37 +60,58 @@ bun run check                                 # checks your setup, including you
 bun run dev
 ```
 
-Open **http://localhost:3000**. This is the dashboard.
-
-Try it with the simulator first:
-
-1. Choose the **Laptop simulator** tab, then **Use this laptop as the glasses**.
-   Allow the microphone and camera.
-2. Press **▶ Start**. The app says hello.
-3. Say "hello", or ask a question. Then say "what do you see?". It takes a
-   photo with your webcam and describes it.
-4. Press **◉ Glasses button**. It describes what the webcam sees.
-5. Say "speak slower". It saves that to the profile, and the next answer is slower.
-
-You can also type in the **Conversation** box instead of speaking. Wear
-headphones if you can, so the app does not hear itself.
+Open **http://localhost:3000**. This is the dashboard. It shows what the app
+hears, says and sees, and a QR code for the phone.
 
 The first time you open the dashboard, a short tour shows each part of the
 page. The **Tour** button at the top opens it again.
 
-## 3. Connect the real glasses
+## 3. Try it with a phone as the glasses
+
+The phone's camera, microphone and speaker stand in for the glasses, and a
+round button on the screen is the glasses button. First, get the XR Starter
+app on the phone:
+
+- **Android:** on the phone, open [XR-Starter.apk](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-XR-Starter/releases/latest/download/XR-Starter.apk) and allow the
+  install. Or scan the QR code on the dashboard, under **No XR Starter on the
+  phone yet?**
+- **iPhone:** ask the organiser. The organiser has iPhones with the app.
+
+1. On the phone, open **XR Starter**, press **Scan QR code**, and point the
+   phone at the QR code on the dashboard. The phone vibrates when it finds it.
+2. Under **Choose the glasses**, press **Use this phone**. Allow the camera
+   and the microphone.
+3. Hold the phone sideways at eye level, with the camera facing ahead. The
+   screen turns with the phone, and the app starts by itself. It says it is ready.
+4. Say "hello", or ask a question. Then say "what do you see?". It takes a
+   photo and describes it.
+5. Tap the round button. It describes what the camera sees. Hold the button
+   for a long press.
+6. Say "speak slower". It saves that to the profile, and the next answer is slower.
+
+You can also type in the **Conversation** box on the dashboard, the same as
+speaking.
+
+The glasses have no screen, so the phone hides the words at first. Turn on
+**Captions** to show them. When the profile asks for captions, they show
+without the switch. **Type** sends typed words from the phone. **Exit** stops
+the app and leaves the phone simulator. Your app sees a simulator
+(`g.device` is `'simulator'`), and its photos have `from: 'phone'`.
+
+## 4. Connect the real glasses
 
 The organiser has the glasses and a phone with the XR Starter app on it.
 
-1. On the phone, open **XR Starter**. The **Glasses** row should say **Connected**.
-2. On your dashboard, choose the **Real glasses** tab. It shows a QR code.
-3. Open the phone's **Camera** app, point it at the QR code, and tap **Open in XR Starter**.
-4. The phone says **Connected to "Hello Glasses"**. Press **▶ Start** on the
-   phone or on the dashboard.
-5. Wear the glasses and talk. Press the button on the right arm of the glasses.
+1. On the phone, open **XR Starter**, press **Scan QR code**, and point the
+   phone at the QR code on your dashboard.
+2. If the phone asks you to choose the glasses, press **Connect glasses**.
+3. The phone shows your app by its name, for example **Starter assistant**.
+   Press **Start** on the phone, or **▶ Start** on the dashboard.
+4. Wear the glasses and talk. Press the button on the right arm of the glasses.
 
-When you are done, press **■ Stop** and pass the glasses on. The next team
-scans their own QR code.
+When you are done, press **Stop** and pass the glasses on. The next team
+opens **More options** on the phone, presses **Connect to another laptop**,
+and scans their own QR code.
 
 **If the phone cannot reach your laptop**, the Wi-Fi may stop devices from
 reaching each other. Run a tunnel in a second terminal:
@@ -98,10 +123,10 @@ bun run tunnel
 
 The dashboard's QR code then uses the tunnel. Scan it again.
 
-## 4. Build your idea
+## 5. Build your idea
 
 Open `src/app.ts`. It is about 60 lines. Save a change and the server
-restarts, and the phone or simulator reconnects by itself.
+restarts, and the phone reconnects by itself.
 
 The API is in `src/starter/index.ts`. In short:
 
@@ -149,7 +174,7 @@ To start from an example, copy it over your app:
   leave out phrases like "you are looking at". The AI already follows this rule.
 - Try your app with the people on your team who will use it, early and often.
 
-## 5. The AI for Accessibility Toolkit
+## 6. The AI for Accessibility Toolkit
 
 The toolkit keeps a **profile** of what the wearer needs. The person sets it
 up once, and apps built on the toolkit read the same profile. You
@@ -183,7 +208,7 @@ the dashboard, and your app reads it with `g.profile.get('yourNeed')`.
 `AGENTS.md` explains this repo to coding agents such as Claude Code, Codex or
 Cursor. A good first message:
 
-> Read AGENTS.md. Then change src/app.ts so that ... Test it with the simulator.
+> Read AGENTS.md. Then change src/app.ts so that ... Run bun test and bun run typecheck when you are done.
 
 ## What is in the repo
 
@@ -193,7 +218,7 @@ examples/           five small apps to run or copy
 src/starter/        the engine: glasses link, speech, voice, AI, dashboard (you should not need to change it)
 src/toolkit/        the bridge to the toolkit: the profile, what it means for audio, the AI prompt
 vendor/             a copy of the toolkit package (do not edit)
-phone/              the phone app (the organiser builds it, see phone/README.md)
+phone/              the phone app: links the glasses, or acts as them (see phone/README.md)
 scripts/            check, tunnel, update-toolkit
 test/               bun test
 docs/ORGANIZER.md   preparing the glasses and the phone for the event
@@ -206,10 +231,12 @@ docs/ORGANIZER.md   preparing the glasses and the phone for the event
 | `bun run check` says the key is missing | Put `GEMINI_API_KEY=...` in `.env` (copy `.env.example` first). |
 | A Gemini model is not available to your key | The app switches to `gemini-flash-latest` by itself. You can also set `GEMINI_MODEL` in `.env`. |
 | The phone says "Cannot reach" | Is `bun run dev` running? Is the phone on the same Wi-Fi? If both are yes, run `bun run tunnel`. |
-| The phone says the code was refused | Scan the QR code on your dashboard again. |
-| The app hears itself | Wear headphones with the simulator. Or open **Options** under the simulator and choose **While I hold Talk**. |
+| The phone says the code was refused | In XR Starter, press **Scan QR code** and scan your dashboard's QR code again. |
+| The phone simulator does not hear me | In the phone's Settings › XR Starter, allow the microphone. The phone also stops listening while the app speaks. |
+| The app hears itself | The phone stops listening while the app speaks. If it still hears itself, turn the phone's volume down. |
 | The app ignores what I said | The dashboard shows "not handled" and the reason. Usually the app was still busy with the last thing. |
 | The glasses are silent with an iPhone | In the iPhone's Settings › Bluetooth, choose the glasses. |
+| The Android phone finds no glasses | Switch Location on and allow it for XR Starter. Android needs it for Bluetooth scanning. |
 | Answers feel slow | Making Gemini's voice takes 2 to 5 seconds per sentence. `VOICE=device` in `.env` uses the phone's own voice, which is instant. |
 | "Gemini is switched off" | A spending guard stopped Gemini (60 calls a minute, 800 a run). Restart `bun run dev`. |
 | Port 3000 is in use | Another copy is running. Stop it, or set `PORT=3001` in `.env`. |

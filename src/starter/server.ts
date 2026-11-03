@@ -1,13 +1,13 @@
 // The HTTP + WebSocket server (Bun's built-in server, no framework).
 //
-// For devices (the phone app and the simulator), from anywhere, with the token:
+// For devices (the phone app), from anywhere, with the token:
 //   /device          WebSocket, see protocol.ts
-//   /upload/photo    where the glasses (or the phone, or the simulator) send a photo
+//   /upload/photo    where the glasses (or the phone) send a photo
 //   /audio/<id>      a spoken line for the device to play
 //   /sounds/<name>   small sounds the phone plays on its own ("working on it")
 //
 // For you, from this laptop (the dashboard shows camera photos):
-//   /                the dashboard and the simulator
+//   /                the dashboard
 //   /api/...         what the dashboard reads and does
 
 import { timingSafeEqual } from 'node:crypto';
@@ -88,7 +88,9 @@ export function startServer(opts: { runtime: Runtime; store: ProfileStore; port:
     if (path === '/api/connect') {
       const addr = phoneAddress(port);
       const link = addr.url ? pairingLink(addr.url, token) : null;
-      return json({ ...addr, token, link, qr: link ? await qrSvg(link) : null, port });
+      const app = async (url: string) => (url ? { url, qr: await qrSvg(url) } : null);
+      const apps = { android: await app(config.androidAppUrl), ios: await app(config.iosAppUrl) };
+      return json({ ...addr, token, link, qr: link ? await qrSvg(link) : null, port, apps });
     }
     if (path.startsWith('/api/photo/')) {
       const photo = runtime.photo(path.slice('/api/photo/'.length).replace(/\.jpg$/, ''));
@@ -175,7 +177,9 @@ export function startServer(opts: { runtime: Runtime; store: ProfileStore; port:
     maxRequestBodySize: 25 * 1024 * 1024,
 
     async fetch(req, server) {
-      const url = new URL(req.url);
+      // A request without a Host header arrives as a bare path. isLocal()
+      // reads the headers, so the placeholder base here opens nothing.
+      const url = new URL(req.url, 'http://unknown.invalid');
       const path = url.pathname;
       try {
         if (path === DEVICE_WS_PATH) {
@@ -254,6 +258,7 @@ export function startServer(opts: { runtime: Runtime; store: ProfileStore; port:
         const created: DeviceLink = {
           kind: m.device === 'glasses' ? 'glasses' : 'simulator',
           name: String(m.name || 'device').slice(0, 60),
+          camera: m.device === 'glasses' ? 'glasses' : m.camera === 'phone' ? 'phone' : 'webcam',
           glasses:
             m.device !== 'glasses' ? null
             : m.glasses ? { connected: !!m.glasses.connected, wifi: m.glasses.wifi ?? null, battery: m.glasses.battery ?? null }

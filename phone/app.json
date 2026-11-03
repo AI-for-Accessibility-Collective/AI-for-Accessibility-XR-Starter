@@ -4,21 +4,32 @@
     "slug": "xr-starter-phone",
     "scheme": "xrstarter",
     "version": "0.1.0",
-    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "orientation": "default",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "edu.mit.media.xrstarter",
       "infoPlist": {
-        "UIBackgroundModes": ["bluetooth-central", "audio"],
+        "UIBackgroundModes": [
+          "bluetooth-central",
+          "audio"
+        ],
         "NSBluetoothAlwaysUsageDescription": "XR Starter connects to your smart glasses over Bluetooth.",
         "NSBluetoothPeripheralUsageDescription": "XR Starter connects to your smart glasses over Bluetooth.",
-        "NSMicrophoneUsageDescription": "XR Starter passes what you say through the glasses microphone to the app on your laptop.",
+        "NSMicrophoneUsageDescription": "XR Starter passes what you say, through the glasses microphone or this phone’s microphone, to the app on your laptop.",
         "NSLocalNetworkUsageDescription": "XR Starter connects to the app running on a laptop on your network.",
-        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true, "NSAllowsLocalNetworking": true }
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
       "package": "edu.mit.media.xrstarter",
       "permissions": [
         "android.permission.BLUETOOTH",
@@ -34,22 +45,93 @@
     "plugins": [
       "./plugins/withAndroid16KbPageSize",
       "./plugins/withPodsDeploymentTarget",
-      ["@mentra/bluetooth-sdk", { "node": true }],
+      [
+        "@mentra/bluetooth-sdk",
+        {
+          "node": true
+        }
+      ],
       [
         "expo-build-properties",
         {
-          "ios": { "deploymentTarget": "15.5" },
+          "ios": {
+            "deploymentTarget": "15.5"
+          },
           "android": {
             "minSdkVersion": 33,
             "usesCleartextTraffic": true,
             "packagingOptions": {
-              "exclude": ["**/libcoder.so"],
-              "pickFirst": ["**/libc++_shared.so", "**/libonnxruntime.so", "**/libonnxruntime4j_jni.so"]
+              "exclude": [
+                "**/libcoder.so"
+              ],
+              "pickFirst": [
+                "**/libc++_shared.so",
+                "**/libonnxruntime.so",
+                "**/libonnxruntime4j_jni.so"
+              ]
             }
           }
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-font",
+        {
+          "ios": {
+            "fonts": [
+              "./assets/fonts/AtkinsonHyperlegibleNext-Regular.ttf",
+              "./assets/fonts/AtkinsonHyperlegibleNext-Italic.ttf",
+              "./assets/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf",
+              "./assets/fonts/AtkinsonHyperlegibleNext-Bold.ttf",
+              "./assets/fonts/AtkinsonHyperlegibleNext-ExtraBold.ttf"
+            ]
+          },
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Atkinson Hyperlegible Next",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegibleNext-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegibleNext-Italic.ttf",
+                    "weight": 400,
+                    "style": "italic"
+                  },
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf",
+                    "weight": 600
+                  },
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegibleNext-Bold.ttf",
+                    "weight": 700
+                  },
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegibleNext-ExtraBold.ttf",
+                    "weight": 800
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "XR Starter uses this phone’s camera to scan the QR code on a laptop’s dashboard, and as the glasses camera when you choose Use this phone.",
+          "microphonePermission": "XR Starter passes what you say, through the glasses microphone or this phone’s microphone, to the app on your laptop."
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": false
+        }
+      ],
+      "expo-screen-orientation"
     ]
   }
 }

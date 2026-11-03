@@ -3,7 +3,8 @@
 This repo is a hackathon starter for **Mentra Live** smart glasses (camera,
 microphone, speaker, one button, an RGB LED, **no display**). A team writes a
 voice app in TypeScript; it runs on their laptop with Bun. A phone app relays
-the glasses to the laptop. A browser simulator can stand in for the glasses.
+the glasses to the laptop, or acts as the glasses itself ("Use this phone"),
+with its camera, mic, speaker and an on-screen button.
 The **AI for Accessibility Toolkit** keeps the wearer's accessibility profile,
 and the starter adapts speech and AI prompts to it.
 
@@ -32,12 +33,14 @@ bun test                          # offline tests, without Gemini
 bun run check                     # setup check; makes 4 small Gemini calls (--offline to skip)
 ```
 
-Test without glasses: on the dashboard, choose **Use this laptop as the
-glasses** in the **Laptop simulator** tab and press Start. Then type in the
-**Conversation** box (the same as speaking), or press **◉ Glasses button**.
-After editing, check the
-dashboard log for errors: a handler that throws shows its error and stack
-there, and the app says "Sorry, something went wrong in the app."
+Test without glasses: a person runs the app on a phone. In the XR Starter
+app, they scan the dashboard's QR code and press **Use this phone**. App code
+runs the same way on the glasses and on the phone. With a phone connected,
+typing in the dashboard's **Conversation** box works the same as speaking.
+Without a phone, Start does nothing, so check changes with `bun test` and
+`bun run typecheck`. After editing, check the dashboard log for errors: a
+handler that throws shows its error and stack there, and the app says
+"Sorry, something went wrong in the app."
 
 ## The API (in `src/starter/index.ts`)
 
@@ -79,7 +82,8 @@ export default defineApp({
   `g.profile.needs`, `g.profile.supportAreas`, `g.profile.on`,
   `await g.profile.set(dimension, value)`.
 - `g.light(color, seconds?)`: color is `'red'|'green'|'blue'|'orange'|'white'` or `null`.
-- `g.log(...)` writes to the dashboard log. `g.device` is `'glasses'` or `'simulator'`.
+- `g.log(...)` writes to the dashboard log. `g.device` is `'glasses'` or
+  `'simulator'` (the phone acting as the glasses).
 
 ### How turn-taking works (read before writing handlers)
 
@@ -136,6 +140,6 @@ export default defineApp({
 
 - Single photos, no video stream (simpler and works over Bluetooth).
 - The dashboard answers on localhost and refuses other addresses (it shows camera photos).
-- The phone app and the simulator speak the same WebSocket protocol
+- The phone app and the simulators speak the same WebSocket protocol
   (`src/starter/protocol.ts`), so app code cannot tell them apart.
 - Tests (`test/`) use a fake device over the real server and run without Gemini.

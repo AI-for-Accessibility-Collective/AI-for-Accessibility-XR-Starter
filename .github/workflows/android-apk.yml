@@ -1,0 +1,83 @@
+# Builds the Android APK of the phone app on each push that touches it, so an
+# up-to-date APK for Android phones comes out of the same source as the
+# iPhone build. Download it from the run's Artifacts (kept 30 days).
+#
+# A tag like phone-v0.1.0 also publishes it as a GitHub Release, named
+# XR-Starter.apk. The dashboard's Android link points at the newest release:
+#   https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-XR-Starter/releases/latest/download/XR-Starter.apk
+#
+# The APK is signed with the debug key, which is enough for an event app
+# installed from a link. Each build uses the same key, so a new version
+# installs over the old one.
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['phone-v*']
+    paths:
+      - 'phone/**'
+      - 'src/starter/protocol.ts'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the phone app's packages
+        working-directory: phone
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: phone
+        run: bunx tsc --noEmit
+
+      - name: Generate the Android project
+        working-directory: phone
+        run: bunx expo prebuild --platform android --no-install
+
+      # 64-bit ARM covers phones on Android 13 and later (minSdk 33), and
+      # keeps the download about half the size of a build for each chip.
+      - name: Build the release APK
+        working-directory: phone/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+      - name: Name the APK
+        run: cp phone/android/app/build/outputs/apk/release/app-release.apk XR-Starter.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xr-starter-android
+          path: XR-Starter.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/phone-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A release made by hand for this tag gets this build's APK in its place.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" XR-Starter.apk --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" XR-Starter.apk \
+              --title "XR Starter phone app ${GITHUB_REF_NAME#phone-v}" \
+              --notes "Android: download XR-Starter.apk on the phone, open it, and allow the install. iPhone: see the TestFlight link in the README."
+          fi

@@ -11,7 +11,7 @@
 //
 // `g` is the glasses: the person wearing them, their camera, microphone and
 // speaker, and their accessibility profile from the toolkit. The same code
-// runs on the real glasses and on the laptop simulator.
+// runs on the real glasses and on the laptop and phone simulators.
 
 import type { AudioSettings } from '../toolkit/settings.ts';
 import type { Need } from '../toolkit/profile.ts';
@@ -26,8 +26,8 @@ export interface Photo {
   jpeg: Buffer;
   /** The same bytes as base64, for APIs that want text. */
   readonly base64: string;
-  /** Where it came from: the glasses camera, or the laptop webcam in the simulator. */
-  from: 'glasses' | 'webcam';
+  /** Where it came from: the glasses camera, or the phone camera when the phone acts as the glasses. 'webcam': a simulator that does not say, such as a test device. */
+  from: 'glasses' | 'webcam' | 'phone';
   /** When it arrived (ms since 1970). */
   takenAt: number;
   /** Shown on the dashboard under this id. */
@@ -57,7 +57,7 @@ export interface Glasses {
   stopSpeaking(): void;
 
   /**
-   * Take a photo with the glasses camera (the webcam in the simulator).
+   * Take a photo with the glasses camera (the phone camera when the phone acts as the glasses).
    * mode 'text' tunes the camera for reading print.
    * Takes a few seconds, longer when the photo travels over Bluetooth.
    */
@@ -105,12 +105,12 @@ export interface Glasses {
   /** Write a line to the dashboard's log. */
   log(...args: unknown[]): void;
 
-  /** Which device is connected right now. */
+  /** Which device is connected right now. 'simulator': the phone acting as the glasses. */
   readonly device: 'glasses' | 'simulator';
 }
 
 export interface ButtonPress {
-  /** 'short' or 'long' press of the glasses button (Space or the Button in the simulator). */
+  /** 'short' or 'long' press of the glasses button (or the round button on the phone). */
   press: 'short' | 'long';
 }
 
@@ -126,7 +126,7 @@ export interface AppDefinition {
    * rooms and for button-first apps.
    */
   listen?: 'always' | 'when-asked';
-  /** Start was pressed (on the phone, the dashboard or the simulator). */
+  /** Start was pressed (on the phone or the dashboard). */
   onStart?(g: Glasses): void | Promise<void>;
   /** The person said something. `text` is already written down. */
   onSpeech?(text: string, g: Glasses): void | Promise<void>;
