@@ -38,7 +38,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # The action's default list includes 'tools', which the current
+      # sdkmanager no longer has. Gradle fetches the rest it needs.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install the phone app's packages
         working-directory: phone
