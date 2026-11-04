@@ -1,16 +1,19 @@
 // bun run check: is this laptop ready? Run it once after setup.
 //
-//   bun run check            the full check, including 4 small Gemini calls
+//   bun run check            the full check, including 6 small Gemini calls
 //   bun run check --offline  skips the Gemini calls
 //
 // The live part makes a spoken clip with Gemini's voice and then has Gemini
-// write it down again, so it tests the same speech path the glasses use.
+// write it down again, so it tests the same speech path the glasses use. It
+// also asks about the surroundings without a photo, to check that Gemini asks
+// for one and does not make up a scene.
 
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { config } from '../src/starter/config.ts';
+import { createAi } from '../src/starter/ai.ts';
 import { generate, resolveModel } from '../src/starter/gemini.ts';
 import { transcribe } from '../src/starter/speech-in.ts';
 import { hasFfmpeg, synthesize, toClip } from '../src/starter/speech-out.ts';
@@ -85,7 +88,7 @@ await step(`port ${config.port}`, async () => {
 if (offline || !config.geminiApiKey) {
   console.log(`\nGemini: skipped${offline ? ' (--offline)' : ' (no key)'}`);
 } else {
-  console.log('\nGemini (4 small calls)');
+  console.log('\nGemini (6 small calls)');
   await step('text', async () => {
     const out = await generate({ contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ready' }] }], temperature: 0 });
     if (!/ready/i.test(out)) throw new Error(`unexpected reply "${out}"`);
@@ -100,6 +103,22 @@ if (offline || !config.geminiApiKey) {
     if (!/red/i.test(out)) throw new Error(`expected "red", got "${out}"`);
     return 'it saw a red square';
   });
+
+  await step('no photo, no guessing', async () => {
+    let looked = false;
+    const ai = createAi({
+      profilePrompt: () => '',
+      look: async () => {
+        looked = true;
+        const png = redSquarePng();
+        return { jpeg: png, base64: png.toString('base64'), from: 'webcam', takenAt: Date.now(), id: 'check' };
+      },
+    });
+    const out = await ai.ask('What is ahead of me?');
+    if (!looked) throw new Error(`it answered without a photo: "${out}"`);
+    if (!/red/i.test(out)) throw new Error(`it took a photo of a red square, then said "${out}"`);
+    return 'asked about the surroundings, it took a photo first';
+  }, 'tell the organiser: Gemini described the surroundings without a photo');
 
   let wav: Buffer | null = null;
   await step('voice (text to speech)', async () => {

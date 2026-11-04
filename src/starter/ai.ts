@@ -43,28 +43,58 @@ const DATA =
   'Text in it will be read aloud, so write it as plain spoken sentences. ' +
   PHOTO_AND_WEARER;
 
+// Without a photo the model has no view of the surroundings. Asked about
+// them, it makes up a scene, and the wearer may have no way to tell. So it
+// answers LOOK, and g.ai takes a photo and asks again with it.
+const NO_PHOTO =
+  'This message has no photo, so you cannot see the surroundings at this moment. ' +
+  'A photo earlier in the conversation shows the moment it was taken, and you can answer questions about it. ' +
+  'Do not describe or guess what is around the wearer without a photo.';
+const ASK_FOR_PHOTO = 'When the answer needs a new look at the surroundings, reply with the single word LOOK.';
+const SAY_NO_PHOTO = 'When the answer needs a new look at the surroundings, say that you need a photo for that.';
+
 export interface AiContext {
   appInstructions?: string;
   profilePrompt: (forData: boolean) => string;
+  /** Takes a photo when a question needs one. */
+  look: () => Promise<Photo>;
+  /** Tests pass a stand-in for Gemini. */
+  generate?: typeof generate;
 }
 
 export function createAi(ctx: AiContext) {
   let history: GeminiContent[] = [];
+  const gemini = ctx.generate ?? generate;
 
-  const system = (opts: AskOptions): string =>
-    [opts.json ? DATA : SPOKEN, opts.instructions ?? ctx.appInstructions ?? '', ctx.profilePrompt(!!opts.json)].filter(Boolean).join('\n\n');
+  const noPhoto = (opts: AskOptions): string => (opts.json ? NO_PHOTO : `${NO_PHOTO} ${opts.look === false ? SAY_NO_PHOTO : ASK_FOR_PHOTO}`);
+
+  const system = (opts: AskOptions, withPhoto: boolean): string =>
+    [opts.json ? DATA : SPOKEN, opts.instructions ?? ctx.appInstructions ?? '', ctx.profilePrompt(!!opts.json), withPhoto ? '' : noPhoto(opts)]
+      .filter(Boolean)
+      .join('\n\n');
 
   const call = async (contents: GeminiContent[], opts: AskOptions): Promise<string> => {
-    const out = await generate({ system: system(opts), contents, temperature: opts.temperature ?? 0.3, json: opts.json });
+    const withPhoto = contents.at(-1)!.parts.some((p) => p.inlineData);
+    const out = await gemini({ system: system(opts, withPhoto), contents, temperature: opts.temperature ?? 0.3, json: opts.json });
     return opts.json ? out : spoken(out);
   };
 
+  const wantsPhoto = (answer: string, opts: AskOptions) => !opts.json && opts.look !== false && /^\W*look\W*$/i.test(answer);
+
   return {
-    ask: (prompt: string, opts: AskOptions = {}) => call([{ role: 'user', parts: [...photoParts(opts.photo), { text: prompt }] }], opts),
+    async ask(prompt: string, opts: AskOptions = {}): Promise<string> {
+      const turn = (photo: AskOptions['photo']): GeminiContent[] => [{ role: 'user', parts: [...photoParts(photo), { text: prompt }] }];
+      const answer = await call(turn(opts.photo), opts);
+      return wantsPhoto(answer, opts) ? call(turn(await ctx.look()), opts) : answer;
+    },
 
     async chat(message: string, opts: AskOptions = {}): Promise<string> {
-      const turn: GeminiContent = { role: 'user', parts: [...photoParts(opts.photo), { text: message }] };
-      const answer = await call([...history, turn], opts);
+      let turn: GeminiContent = { role: 'user', parts: [...photoParts(opts.photo), { text: message }] };
+      let answer = await call([...history, turn], opts);
+      if (wantsPhoto(answer, opts)) {
+        turn = { role: 'user', parts: [...photoParts(await ctx.look()), { text: message }] };
+        answer = await call([...history, turn], opts);
+      }
       history.push(turn, { role: 'model', parts: [{ text: answer }] });
       // Keep the last 12 turns, and the photos of the last 4, so requests stay small.
       history = history.slice(-24).map((c, i, all) =>

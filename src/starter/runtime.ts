@@ -187,7 +187,16 @@ export class Runtime {
     private readonly store: ProfileStore,
     readonly appFile = 'src/app.ts',
   ) {
-    this.ai = createAi({ appInstructions: app.instructions, profilePrompt: (forData) => profilePrompt(this.profile(), this.settings(), { forData }) });
+    this.ai = createAi({
+      appInstructions: app.instructions,
+      profilePrompt: (forData) => profilePrompt(this.profile(), this.settings(), { forData }),
+      // A question that needs the camera: say so, and take the photo meanwhile.
+      look: () => {
+        this.log('info', 'g.ai is taking a photo: the question needs the camera');
+        void this.say('Let me look.').catch(() => {});
+        return this.takePhoto('medium', 'photo');
+      },
+    });
     this.g = this.makeGlasses(this.gen);
     store.onChange((p) => {
       this.stored = p;

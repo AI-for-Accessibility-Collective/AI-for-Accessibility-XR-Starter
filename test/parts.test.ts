@@ -7,7 +7,9 @@ import { audioSettings, chunkText, DEFAULT_SETTINGS, needValue } from '../src/to
 import { profilePrompt } from '../src/toolkit/prompt.ts';
 import { checkNeedValue, EXAMPLE_PROFILES, NEEDS } from '../src/toolkit/needs.ts';
 import { createSegmenter } from '../src/starter/speech-in.ts';
-import { spoken } from '../src/starter/ai.ts';
+import { createAi, spoken } from '../src/starter/ai.ts';
+import type { GenerateOpts } from '../src/starter/gemini.ts';
+import type { Photo } from '../src/starter/index.ts';
 import { pcmToWav, trimSilence } from '../src/starter/speech-out.ts';
 
 describe('settings (the toolkit surface)', () => {
@@ -131,6 +133,59 @@ describe('the speech segmenter', () => {
     seg.push(tone(300));
     seg.push(quiet(1200));
     expect(events).toEqual(['guess', 'withdrawn', 'guess', 'held']);
+  });
+});
+
+describe('g.ai without a photo', () => {
+  // A stand-in for Gemini: it answers from a photo, and asks for one when the system prompt lets it.
+  const setup = () => {
+    const calls: GenerateOpts[] = [];
+    let looks = 0;
+    const photo: Photo = { jpeg: Buffer.from('jpeg'), base64: 'anBlZw==', from: 'glasses', takenAt: 0, id: 'p1' };
+    const ai = createAi({
+      profilePrompt: () => '',
+      look: async () => (looks++, photo),
+      generate: async (opts) => {
+        calls.push(opts);
+        if (opts.contents.at(-1)!.parts.some((p) => p.inlineData)) return 'A door is two metres ahead.';
+        return opts.system!.includes('LOOK') ? 'LOOK.' : 'I need a photo for that.';
+      },
+    });
+    return { ai, calls, looks: () => looks };
+  };
+
+  test('a question that needs the camera takes a photo, and is asked again with it', async () => {
+    const { ai, calls, looks } = setup();
+    expect(await ai.ask('What is ahead of me?')).toBe('A door is two metres ahead.');
+    expect(looks()).toBe(1);
+    expect(calls[0]!.system).toContain('cannot see the surroundings');
+    expect(calls[1]!.system).not.toContain('cannot see the surroundings');
+  });
+
+  test('chat keeps the photo it took, for the next question', async () => {
+    const { ai, calls, looks } = setup();
+    expect(await ai.chat('Wait, what about now?')).toBe('A door is two metres ahead.');
+    await ai.chat('Is it open?');
+    expect(looks()).toBe(2);
+    expect(calls[2]!.contents[0]!.parts.some((p) => p.inlineData)).toBe(true);
+  });
+
+  test('a question with a photo is answered from it, without another photo', async () => {
+    const { ai, calls, looks } = setup();
+    const photo: Photo = { jpeg: Buffer.from('x'), base64: 'eA==', from: 'phone', takenAt: 0, id: 'p2' };
+    expect(await ai.ask('What is this?', { photo })).toBe('A door is two metres ahead.');
+    expect(looks()).toBe(0);
+    expect(calls[0]!.system).not.toContain('cannot see the surroundings');
+  });
+
+  test('with look: false, and for JSON, it takes no photo and does not guess', async () => {
+    const { ai, calls, looks } = setup();
+    expect(await ai.ask('What is ahead of me?', { look: false })).toBe('I need a photo for that.');
+    await ai.ask('What is ahead of me?', { json: true });
+    expect(looks()).toBe(0);
+    expect(calls[0]!.system).toContain('say that you need a photo');
+    expect(calls[1]!.system).toContain('Do not describe or guess');
+    expect(calls[1]!.system).not.toContain('LOOK');
   });
 });
 

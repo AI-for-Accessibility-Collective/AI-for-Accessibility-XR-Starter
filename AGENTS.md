@@ -30,7 +30,7 @@ bun run dev                       # runs src/app.ts, restarts on save; dashboard
 bun run dev examples/1-echo.ts    # run another app file
 bun run typecheck                 # tsc --noEmit
 bun test                          # offline tests, without Gemini
-bun run check                     # setup check; makes 4 small Gemini calls (--offline to skip)
+bun run check                     # setup check; makes 6 small Gemini calls (--offline to skip)
 ```
 
 Test without glasses: a person runs the app on a phone. In the XR Starter

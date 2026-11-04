@@ -28,9 +28,10 @@ export default defineApp({
   async onSpeech(text, g) {
     if (/\b(slower|slow down)\b/i.test(text)) return changeSpeed(g, -0.1);
     if (/\b(faster|speed up)\b/i.test(text)) return changeSpeed(g, +0.1);
-    if (/\b(see|look|front of me|describe)\b/i.test(text)) return describe(g, text);
+    if (/\b(see|look|ahead|around|front of me|describe)\b/i.test(text)) return describe(g, text);
 
     // Other speech: a conversation. g.ai.chat remembers earlier turns until Stop.
+    // When a question needs the camera, it says "Let me look." and takes a photo.
     const answer = await g.ai.chat(text);
     await g.say(answer);
   },

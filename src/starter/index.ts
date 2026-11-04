@@ -43,6 +43,12 @@ export interface AskOptions {
   json?: boolean;
   /** 0 is most predictable. Default 0.3. */
   temperature?: number;
+  /**
+   * Without a photo, Gemini cannot see. When a question needs the camera,
+   * g.ai says "Let me look.", takes a photo and asks again. Default true.
+   * With false, the answer says that it needs a photo. JSON requests do not take photos.
+   */
+  look?: boolean;
 }
 
 export interface Glasses {

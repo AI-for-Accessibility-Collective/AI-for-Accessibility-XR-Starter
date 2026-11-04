@@ -39,6 +39,7 @@ export default defineApp({
       await g.ai.ask(
         `The wearer asks: "${text}"\nTheir notes, oldest first:\n${list}\n` +
           'Answer from the notes. If the notes do not say, tell them so. Mention when the note was made if it helps.',
+        { look: false }, // answers come from the notes, so no photo
       ),
     );
   },
