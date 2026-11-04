@@ -21,6 +21,8 @@ import { createSegmenter } from './speech-in.ts';
 import { transcribe } from './speech-in.ts';
 import { hasFfmpeg, makeClip, type Clip } from './speech-out.ts';
 import { createAi, spoken } from './ai.ts';
+import { CAMERA_TIMEOUT_MS, LiveCamera, type CameraState } from './camera.ts';
+import { FrameStore } from './frames.ts';
 import { audioSettings, chunkText, type AudioSettings } from '../toolkit/settings.ts';
 import { profilePrompt } from '../toolkit/prompt.ts';
 import { EMPTY_PROFILE, type Profile, type ProfileStore } from '../toolkit/profile.ts';
@@ -60,6 +62,7 @@ export interface DashState extends DeviceState {
   adapt: boolean;
   micOn: boolean;
   listenMode: 'always' | 'when-asked';
+  camera: CameraState; // the live camera (camera.ts)
   gemini: { key: boolean; off: string | null; calls: number; voice: 'gemini' | 'device'; ffmpeg: boolean };
 }
 
@@ -147,6 +150,32 @@ export class Runtime {
   private heard = '';
   private said = '';
   private statusNote = '';
+
+  // The live camera (camera.ts): frames from the glasses while an app with
+  // camera: 'live' or onFrame runs. g.takePhoto reads them, and onFrame gets
+  // the newest about once a second.
+  private frames = new FrameStore(config.frameRingSize);
+  private newestFrame: { jpeg: Buffer; at: number } | null = null; // the last frame that arrived, for onFrame
+  private cameraNote = ''; // one line about the camera, from camera.ts
+  readonly camera = new LiveCamera({
+    frames: this.frames,
+    glasses: () => (this.device?.kind === 'glasses' ? this.device.glasses : null),
+    startStream: (url, video) => this.request((id) => ({ t: 'camera-start', id, url, ...video }), CAMERA_TIMEOUT_MS).then(() => undefined),
+    stopStream: () => this.device?.send({ t: 'camera-stop', id: this.nextRequestId++ }),
+    setStatus: (text) => {
+      this.cameraNote = text;
+      this.pushState();
+    },
+    log: (level, text) => this.log(level, text),
+    onFrame: (jpeg) => void (this.newestFrame = { jpeg, at: Date.now() }),
+  });
+  private frameTimer: ReturnType<typeof setInterval> | null = null;
+  private frameBusy = false;
+  private frameErrors = 0;
+  // When the person began to speak, worked out from the utterance's length,
+  // and whether the frames are held on that moment for the handler.
+  private spokenAt = 0;
+  private speechPinned = false;
   private appError: string | null = null;
   private micOn = false;
   private waiters: Array<(text: string | null) => void> = [];
@@ -288,6 +317,8 @@ export class Runtime {
     this.ai.forget();
     this.segmenter.reset();
     this.log('info', `Started (${this.device.kind === 'glasses' ? 'real glasses' : this.device.name.toLowerCase()})`);
+    if (this.wantsLiveCamera() && this.device.kind === 'glasses') this.camera.on();
+    this.startFrames();
     this.updateMic();
     this.pushState();
     if (this.app.onStart) void this.run('onStart', () => this.app.onStart!(this.g));
@@ -308,6 +339,10 @@ export class Runtime {
     for (const w of this.waiters.splice(0)) w(null);
     for (const [, p] of this.pendingPhotos) p.reject(new StoppedError('Stopped'));
     this.pendingPhotos.clear();
+    this.camera.off();
+    this.stopFrames();
+    this.frames.unpin();
+    this.speechPinned = false;
     this.device?.send({ t: 'stop-audio' });
     this.device?.send({ t: 'light', color: null, ms: 0 });
     this.updateMic();
@@ -371,6 +406,8 @@ export class Runtime {
     const reuse = held ? this.early : null;
     this.early = null;
     if (!this.canHear()) return;
+    // 16 kHz, 16-bit mono: 32 bytes a millisecond, so the length says when it began.
+    this.spokenAt = Date.now() - Math.round(pcm.length / 32);
     const gen = this.gen;
     this.transcribing++;
     this.pushState();
@@ -407,7 +444,22 @@ export class Runtime {
       : undefined;
     this.emit({ type: 'you', text, via, at: Date.now(), ignored });
     this.pushState();
-    if (!ignored) void this.run('onSpeech', () => this.app.onSpeech!(text, this.g));
+    if (ignored) return;
+    // With the live camera, the handler's g.takePhoto() is the view from when
+    // the person began to speak, the way the wearable-extension project did
+    // it (frames.ts, pin): by the time Gemini is asked, they have often
+    // looked away, at their phone or at the floor.
+    const pin = via === 'voice' && this.camera.streaming();
+    if (pin) {
+      this.frames.pin(this.spokenAt + config.frameLagMs);
+      this.speechPinned = true;
+    }
+    void this.run('onSpeech', () => this.app.onSpeech!(text, this.g)).finally(() => {
+      if (pin) {
+        this.frames.unpin();
+        this.speechPinned = false;
+      }
+    });
   }
 
   private listen(timeoutMs: number): Promise<string | null> {
@@ -526,6 +578,17 @@ export class Runtime {
       throw new Error('The phone is connected but the glasses are not. Connect them in the phone app.');
     }
     if (!this.active) throw new StoppedError('Stopped');
+    // The live camera: a frame, with no round trip to the glasses. Inside
+    // onSpeech it is the view from when the person began to speak; otherwise
+    // the next frame to arrive, so a button press gets the view right now.
+    if (this.camera.streaming()) {
+      const entry = this.speechPinned ? this.frames.recent()[0] : (await this.frames.captureNext(1, 2500)).at(-1);
+      if (!this.active) throw new StoppedError('Stopped');
+      if (!entry) throw new Error('The live camera has no picture yet. Check that the glasses and this laptop are on the same Wi-Fi.');
+      const photo = new PhotoImpl(entry.jpeg, 'glasses', randomId(6), entry.timestamp);
+      this.keepPhoto(photo);
+      return photo;
+    }
     const requestId = `p${randomId()}`;
     const arrived = new Promise<Buffer>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -552,14 +615,19 @@ export class Runtime {
     try {
       const jpeg = await arrived;
       const photo = new PhotoImpl(jpeg, link.camera, randomId(6));
-      this.photos.set(photo.id, photo);
-      for (const old of [...this.photos.keys()].slice(0, -30)) this.photos.delete(old);
-      this.emit({ type: 'photo', id: photo.id, from: photo.from, at: photo.takenAt, kb: Math.round(jpeg.length / 1024) });
+      this.keepPhoto(photo);
       return photo;
     } finally {
       this.statusNote = '';
       this.pushState();
     }
+  }
+
+  // Kept for the dashboard (/api/photo/<id>.jpg), the last 30.
+  private keepPhoto(photo: PhotoImpl): void {
+    this.photos.set(photo.id, photo);
+    for (const old of [...this.photos.keys()].slice(0, -30)) this.photos.delete(old);
+    this.emit({ type: 'photo', id: photo.id, from: photo.from, at: photo.takenAt, kb: Math.round(photo.jpeg.length / 1024) });
   }
 
   // An upload reached /upload/photo. false: no request was waiting for it.
@@ -573,6 +641,55 @@ export class Runtime {
 
   photo(id: string): Photo | undefined {
     return this.photos.get(id);
+  }
+
+  // ── the live camera ────────────────────────────────────────────────────────
+
+  private wantsLiveCamera(): boolean {
+    return this.app.camera === 'live' || !!this.app.onFrame;
+  }
+
+  // The newest frame, for the dashboard's live view. null when the camera is off or has stalled.
+  latestFrame(): Buffer | null {
+    return this.camera.streaming() ? this.frames.latest() : null;
+  }
+
+  // onFrame, about once a second, with the newest frame. A call that is still
+  // running is left to finish, and that tick is skipped. It runs next to the
+  // other handlers and does not count as busy, so speech is still heard.
+  private startFrames(): void {
+    if (!this.app.onFrame || this.frameTimer) return;
+    this.frameErrors = 0;
+    this.frameTimer = setInterval(() => this.tickFrame(), Math.round(1000 / config.framesPerSecond));
+  }
+
+  private stopFrames(): void {
+    if (this.frameTimer) clearInterval(this.frameTimer);
+    this.frameTimer = null;
+    this.newestFrame = null;
+  }
+
+  private tickFrame(): void {
+    const newest = this.newestFrame;
+    if (!this.active || this.frameBusy || !newest || !this.camera.streaming() || this.frames.stalled()) return;
+    const gen = this.gen;
+    this.frameBusy = true;
+    const frame = new PhotoImpl(newest.jpeg, 'glasses', randomId(6), newest.at);
+    Promise.resolve()
+      .then(() => this.app.onFrame!(frame, this.g))
+      .catch((e) => {
+        if (gen !== this.gen || e instanceof StoppedError) return;
+        // Once a second would flood the log when it keeps failing: the first few, then one a minute.
+        this.frameErrors++;
+        if (this.frameErrors <= 3 || this.frameErrors % 60 === 0) this.log('error', `onFrame failed: ${message(e)}`);
+      })
+      .finally(() => void (this.frameBusy = false));
+  }
+
+  // The server is shutting down.
+  shutdown(): void {
+    this.stopFrames();
+    this.camera.dispose();
   }
 
   // ── the device ─────────────────────────────────────────────────────────────
@@ -594,6 +711,7 @@ export class Runtime {
   attach(link: DeviceLink, resume: boolean): void {
     const old = this.device;
     if (old && old !== link) {
+      this.camera.off(); // the old phone is told to stop the stream, before it goes
       old.close(CLOSE_REPLACED, 'another device took over');
       this.dropRequests('another device took over');
     }
@@ -602,6 +720,7 @@ export class Runtime {
     this.graceTimer = null;
     link.send({ t: 'welcome', app: this.app.name });
     this.log('info', `Connected: ${link.kind === 'glasses' ? `phone with the glasses (${link.name})` : link.name.toLowerCase()}`);
+    if (this.active && this.wantsLiveCamera() && link.kind === 'glasses') this.camera.on();
     this.updateMic(true);
     this.pushState();
     if (!this.active && resume && (this.lastStop === 'never' || this.lastStop === 'device')) this.start();
@@ -631,7 +750,10 @@ export class Runtime {
     switch (m.t) {
       case 'glasses':
         link.glasses = { connected: !!m.connected, wifi: m.wifi ?? null, battery: m.battery ?? null };
+        this.camera.glassesChanged();
         return this.pushState();
+      case 'camera-status':
+        return this.log(/error|fail/i.test(String(m.status)) ? 'warn' : 'info', `Camera: the glasses report ${String(m.status)}${m.detail ? ` (${String(m.detail).slice(0, 200)})` : ''}`);
       case 'active':
         return m.on ? this.start() : this.stop();
       case 'type':
@@ -690,11 +812,13 @@ export class Runtime {
     const off = geminiHaltReason();
     if (off) return `Gemini is switched off: ${off}. Restart the server to turn it back on.`;
     if (!config.geminiApiKey) return 'GEMINI_API_KEY is missing from .env, so speech-to-text and g.ai do not work. Typing on the dashboard still works.';
+    if (this.active && this.camera.state === 'failed' && this.cameraNote) return this.cameraNote;
     return null;
   }
 
   private status(phase: Phase): string {
     if (this.statusNote) return this.statusNote;
+    if (this.active && this.camera.state === 'starting' && this.cameraNote) return this.cameraNote;
     if (!this.device) return 'No device connected';
     if (phase === 'off') return 'Press Start to begin';
     if (phase === 'listening') return this.waiters.length ? 'Listening for your answer' : 'Listening';
@@ -719,6 +843,7 @@ export class Runtime {
       adapt: this.adapt,
       micOn: this.micOn,
       listenMode: this.listenMode,
+      camera: this.camera.state,
       gemini: { key: !!config.geminiApiKey, off: geminiHaltReason(), calls: geminiCallCount(), voice: config.voice, ffmpeg: hasFfmpeg },
     };
   }
@@ -726,7 +851,7 @@ export class Runtime {
   private lastPushed = '';
   pushState(): void {
     const full = this.dashState();
-    const { file: _f, device: _d, adapt: _a, micOn: _m, listenMode: _l, gemini: _g, ...forDevice } = full;
+    const { file: _f, device: _d, adapt: _a, micOn: _m, listenMode: _l, camera: _c, gemini: _g, ...forDevice } = full;
     const key = JSON.stringify(full);
     if (key === this.lastPushed) return;
     this.lastPushed = key;

@@ -129,6 +129,7 @@ export default defineApp({
 | Hear the person | `onSpeech(text, g) { ... }` |
 | Wait for the next answer | `const answer = await g.listen()` |
 | Take a photo | `const photo = await g.takePhoto()` |
+| See the view every second | `camera: 'live'` and `onFrame(frame, g) { ... }` (glasses on Wi-Fi) |
 | Ask Gemini | `await g.ai.ask('What is this?', { photo })` |
 | Chat, with memory | `await g.ai.chat(text)` |
 | Use the button | `onButton(button, g) { ... }`, where `button.press` is `'short'` or `'long'` |
@@ -151,6 +152,7 @@ bun run dev examples/2-what-do-you-see.ts
 | [`3-read-it-to-me.ts`](examples/3-read-it-to-me.ts) | Reads a letter, a label or a menu aloud. |
 | [`4-step-by-step.ts`](examples/4-step-by-step.ts) | Guides a task one step at a time, and follows the profile. |
 | [`5-remember-for-me.ts`](examples/5-remember-for-me.ts) | Remembers where you put things, and tells you later. |
+| [`6-watch-ahead.ts`](examples/6-watch-ahead.ts) | Watches the way ahead on the live camera, and says when the view changes. |
 
 To build on one, copy it over your app (`cp examples/3-read-it-to-me.ts src/app.ts`)
 and change its import to `'./starter/index.ts'`.
@@ -214,7 +216,7 @@ bun run tunnel              # in a second terminal, then scan the new QR code
 
 ```
 src/app.ts          your app (start here)
-examples/           five small apps to run or copy
+examples/           six small apps to run or copy
 src/toolkit/        the profile: what it means for speech and for the AI
 src/starter/        the engine: glasses link, speech, voice, AI, dashboard
 phone/              the XR Starter phone app (phone/README.md)

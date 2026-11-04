@@ -30,6 +30,7 @@ bun run dev                       # runs src/app.ts, restarts on save; dashboard
 bun run dev examples/1-echo.ts    # run another app file
 bun run typecheck                 # tsc --noEmit
 bun test                          # offline tests, without Gemini
+bun run test:camera               # the live camera, with ffmpeg standing in for the glasses
 bun run check                     # setup check; makes 6 small Gemini calls (--offline to skip)
 ```
 
@@ -54,7 +55,9 @@ export default defineApp({
   async onStart(g) {},                  // Start pressed
   async onSpeech(text, g) {},           // the person said something (already transcribed)
   async onButton({ press }, g) {},      // glasses button: press is 'short' | 'long'
+  async onFrame(frame, g) {},           // live camera only: the newest picture, about once a second
   async onStop(g) {},                   // Stop pressed; g.say is silent now
+  camera: 'photos',                     // or 'live': the glasses stream video (see The live camera)
 });
 ```
 
@@ -69,6 +72,7 @@ export default defineApp({
   longer when the photo travels over Bluetooth. Say something first
   ("Let me look.") so the wearer is not left in silence. `mode: 'text'` is
   tuned for print.
+  With the live camera it returns a frame at once (below).
 - `await g.listen({ timeoutMs? })` returns the next thing said or typed, or
   `null` after the timeout (default 15 s). While it waits, speech goes to it
   and not to `onSpeech`.
@@ -97,6 +101,27 @@ export default defineApp({
 - Stop cancels Gemini requests in flight; `g.say` then stays silent and
   `g.takePhoto` rejects. Handlers do not need to check for this.
 - An idle session stops itself after 20 minutes (`IDLE_STOP_MIN`).
+
+### The live camera
+
+By default the glasses take one photo per `g.takePhoto()`. With
+`camera: 'live'`, or an `onFrame` handler, the glasses stream video to the
+laptop while the app runs (`src/starter/camera.ts`, copied from the AI for
+Accessibility XR project, where it ran with these glasses):
+
+- `g.takePhoto()` returns the newest frame at once, 1280×720. Inside
+  `onSpeech` it is the frame from when the person began to speak.
+- `onFrame(frame, g)` runs about once a second (`FRAMES_PER_SECOND`), with a
+  `Photo`. A call still running is left to finish and that frame is skipped.
+  It does not block `onSpeech` or `onButton`. Gemini calls from it count
+  toward the spending guard: ask every few seconds, and compare answers
+  before speaking (see `examples/6-watch-ahead.ts`).
+- It needs the glasses on a Wi-Fi network that reaches the laptop (the
+  tunnel does not carry video), and ffmpeg on the laptop. Without them the
+  dashboard says so, and the app falls back to single photos.
+- With the phone as the glasses there is no stream: `onFrame` does not run,
+  and `g.takePhoto()` uses the phone camera.
+- The dashboard's glasses card shows the newest frame while it streams.
 
 ### The AI
 

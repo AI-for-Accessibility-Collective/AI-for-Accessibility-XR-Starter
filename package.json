@@ -10,11 +10,13 @@
     "tunnel": "bun scripts/tunnel.ts",
     "check": "bun scripts/check.ts",
     "test": "bun test",
+    "test:camera": "bun test ./test/camera.test.ts",
     "typecheck": "tsc --noEmit",
     "update-toolkit": "bun scripts/update-toolkit.ts"
   },
   "dependencies": {
     "@ai4a11y/toolkit": "file:./vendor/ai4a11y-toolkit",
+    "node-media-server": "2.7.4",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

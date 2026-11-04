@@ -10,7 +10,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config } from './config.ts';
 import { haltGemini, onGeminiHalt } from './gemini.ts';
-import { pairingLink, pairingToken, phoneAddress, qrTerminal } from './network.ts';
+import { lanAddresses, pairingLink, pairingToken, phoneAddress, qrTerminal } from './network.ts';
 import { Runtime } from './runtime.ts';
 import { startServer } from './server.ts';
 import { hasFfmpeg } from './speech-out.ts';
@@ -60,6 +60,7 @@ process.on('uncaughtException', (e) => runtime.log('error', `Uncaught error: ${e
 function shutdown(why: string): void {
   haltGemini(`the server was stopped (${why})`);
   runtime.stop('Stopped: the server is shutting down', 'other');
+  runtime.shutdown();
   setTimeout(() => {
     server.stop(true);
     process.exit(0);
@@ -76,7 +77,15 @@ ${bold(`▶ ${app.name}`)}  (${appArg})
   Dashboard:   ${bold(`http://localhost:${config.port}`)}   open it in your browser
   Phone uses:  ${addr.url ?? '(no network found)'}   ${addr.how === 'wifi' ? '(this laptop on Wi-Fi)' : addr.how === 'tunnel' ? '(the tunnel)' : addr.how === 'PUBLIC_URL' ? '(PUBLIC_URL in .env)' : ''}
   Pairing code: ${token}
-${!config.geminiApiKey ? `\n  ${bold('! GEMINI_API_KEY is missing from .env.')} Speech-to-text and g.ai will not work until you add it.\n` : ''}${!hasFfmpeg ? '  (ffmpeg not found: voice clips are sent as WAV, which is fine, just bigger.)\n' : ''}
+${!config.geminiApiKey ? `\n  ${bold('! GEMINI_API_KEY is missing from .env.')} Speech-to-text and g.ai will not work until you add it.\n` : ''}${!hasFfmpeg ? '  (ffmpeg not found: voice clips are sent as WAV, which is fine, just bigger.)\n' : ''}${
+  app.camera === 'live' || app.onFrame
+    ? config.video === 'off'
+      ? '  Live camera: off (VIDEO=off in .env), so the app takes single photos.\n'
+      : !hasFfmpeg
+        ? `  ${bold('! This app uses the live camera, which needs ffmpeg.')} Install it (brew install ffmpeg) and start again.\n`
+        : `  Live camera: the glasses stream to rtmp://${config.rtmpHost || lanAddresses()[0] || '?'}:${config.rtmpPort} while the app runs (glasses and laptop on the same Wi-Fi).\n`
+    : ''
+}
   Stop with Ctrl-C.
 `);
 if (addr.url && process.stdout.isTTY) {

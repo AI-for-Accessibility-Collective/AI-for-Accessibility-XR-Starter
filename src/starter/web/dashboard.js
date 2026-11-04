@@ -283,3 +283,18 @@ try {
   seen = localStorage.getItem('xr-tour-seen') === '1';
 } catch {}
 if (!seen) setTimeout(() => tour.start(), 600);
+
+// ── the live camera ──────────────────────────────────────────────────────────
+// While the glasses stream video (an app with camera: 'live' or onFrame), the
+// glasses card shows the newest frame, refreshed once a second, so a team
+// can see what the app sees.
+{
+  const img = $('live-frame');
+  img.onerror = () => (img.hidden = true); // no frame yet
+  setInterval(() => {
+    const on = state?.camera === 'live';
+    if (!on) img.hidden = true;
+    else img.src = `/api/frame.jpg?t=${Date.now()}`;
+  }, 1000);
+  img.onload = () => (img.hidden = state?.camera !== 'live');
+}

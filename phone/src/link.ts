@@ -80,6 +80,10 @@ export function useLink(
   const finishRef = useRef<(() => void) | null>(null);
   const cueRef = useRef<AudioPlayer | null>(null);
   const cueOnRef = useRef(false);
+  // The live camera (src/starter/camera.ts). A stop that is still being
+  // carried out, so a start that lands meanwhile waits for it.
+  const stoppingRef = useRef<Promise<void> | null>(null);
+  const ledTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const glassesRef = useRef(glasses);
   glassesRef.current = glasses;
 
@@ -239,6 +243,23 @@ export function useLink(
     [laptop],
   );
 
+  // ── The live camera's light ───────────────────────────────────────────────
+  // A green light on the glasses while they stream video, so people nearby
+  // can tell. The LED command lasts 30 s at most, so it is repeated.
+  // From the wearable-extension project (phone/src/useGuideLink.ts).
+  const setCameraLight = useCallback((on: boolean): void => {
+    if (ledTimerRef.current) clearInterval(ledTimerRef.current);
+    ledTimerRef.current = null;
+    const light = (): void =>
+      void BluetoothSdk.rgbLedControl(`cam-${Date.now()}`, null, 'on', 'green', 30_000, 0, 1).catch((e) => console.warn('camera light failed', e));
+    if (on) {
+      light();
+      ledTimerRef.current = setInterval(light, 25_000);
+    } else {
+      void BluetoothSdk.rgbLedControl(`cam-${Date.now()}`, null, 'off', null, 0, 0, 0).catch(() => {});
+    }
+  }, []);
+
   // ── The connection to the laptop ──────────────────────────────────────────
   useEffect(() => {
     if (!laptop) {
@@ -330,6 +351,43 @@ export function useLink(
             lightTimer = m.color ? setTimeout(() => setLight(null), m.ms) : null;
           } else void BluetoothSdk.rgbLedControl(`led-${Date.now()}`, null, m.color ? 'on' : 'off', m.color, m.color ? m.ms : 0, 0, 1).catch(() => {});
           break;
+        // The live camera, as the wearable-extension project did it
+        // (phone/src/useGuideLink.ts). The glasses publish video to the
+        // laptop's RTMP address; this phone only passes the start and stop on.
+        case 'camera-start':
+          if (asPhone) return reply(m.id, false, 'the phone as the glasses has no live camera');
+          // The glasses run one stream, and a start that lands while a stop is
+          // still being carried out is refused ("preempted"). So: stop first,
+          // wait for it, then start.
+          (stoppingRef.current ?? Promise.resolve())
+            .then(() =>
+              BluetoothSdk.startStream({
+                type: 'start_stream',
+                streamUrl: m.url,
+                video: { fps: m.fps, width: m.width, height: m.height, bitrate: m.bitrate },
+                sound: false,
+              }),
+            )
+            .then(
+              () => {
+                setCameraLight(true);
+                reply(m.id, true);
+              },
+              (e: unknown) => reply(m.id, false, errorText(e)),
+            );
+          break;
+        case 'camera-stop': {
+          if (asPhone) break;
+          setCameraLight(false);
+          const stopping = BluetoothSdk.stopStream()
+            .then(() => undefined)
+            .catch(() => undefined)
+            .finally(() => {
+              if (stoppingRef.current === stopping) stoppingRef.current = null;
+            });
+          stoppingRef.current = stopping;
+          break;
+        }
       }
     };
 
@@ -377,6 +435,10 @@ export function useLink(
         setCue(false);
         applyMic(false);
         setState(null);
+        if (!asPhone) {
+          setCameraLight(false);
+          void BluetoothSdk.stopStream().catch(() => {});
+        }
         if (ev.code === CLOSE_BAD_TOKEN) return setStatus('refused');
         if (ev.code === CLOSE_REPLACED) {
           activeRef.current = false;
@@ -405,6 +467,13 @@ export function useLink(
     const button = BluetoothSdk.addListener('button_press', (event) => {
       if (!asPhone) send({ t: 'button', press: event.pressType === 'long' ? 'long' : 'short', buttonId: event.buttonId });
     });
+    // The glasses' own account of their camera stream, for the laptop's log.
+    const streamStatus = BluetoothSdk.addListener('stream_status', (event) => {
+      if (asPhone) return;
+      const e = event as { status?: string; errorDetails?: string; reason?: string; attempt?: number; maxAttempts?: number };
+      const detail = e.errorDetails ?? e.reason ?? (e.attempt != null ? `attempt ${e.attempt}${e.maxAttempts ? '/' + e.maxAttempts : ''}` : undefined);
+      send({ t: 'camera-status', status: String(e.status ?? 'unknown'), detail });
+    });
 
     return () => {
       closed = true;
@@ -414,14 +483,19 @@ export function useLink(
       clearInterval(ping);
       mic.remove();
       button.remove();
+      streamStatus.remove();
       wsRef.current?.close();
       stopAudio();
       setCue(false);
       cueRef.current?.remove();
       cueRef.current = null;
       void BluetoothSdk.setMicState(false).catch(() => {});
+      if (!asPhone) {
+        setCameraLight(false);
+        void BluetoothSdk.stopStream().catch(() => {});
+      }
     };
-  }, [laptop, asPhone, send, speak, photo, stopAudio, setCue]);
+  }, [laptop, asPhone, send, speak, photo, stopAudio, setCue, setCameraLight]);
 
   // Keep the laptop told about the glasses.
   useEffect(() => {

@@ -60,6 +60,36 @@ export const config = {
   // Bluetooth. 'ble': through the phone (slower, needs no Wi-Fi).
   photoTransfer: text('PHOTO_TRANSFER', 'auto') === 'ble' ? ('ble' as const) : ('auto' as const),
 
+  // The glasses' live camera (camera.ts): video from the glasses to this
+  // laptop while an app with `camera: 'live'` or `onFrame` runs. It needs
+  // the glasses on a Wi-Fi network that reaches this laptop, and ffmpeg.
+  // 'off' disables it, and such apps fall back to single photos.
+  video: text('VIDEO', 'auto') === 'off' ? ('off' as const) : ('auto' as const),
+  // The port the glasses publish to, and this laptop's address as the glasses
+  // reach it. Empty: this laptop's Wi-Fi address.
+  rtmpPort: int('RTMP_PORT', 1935),
+  rtmpHost: text('RTMP_HOST', ''),
+  // The values below are the ones the wearable-extension project settled on
+  // with these glasses.
+  frameRate: int('FRAME_RATE', 3),
+  // Picture the glasses are asked to send. Left to themselves they send 854×480,
+  // too soft to read a dial or a label; 720p reads well and still streams
+  // comfortably over ordinary Wi-Fi.
+  streamWidth: int('STREAM_WIDTH', 1280),
+  streamHeight: int('STREAM_HEIGHT', 720),
+  // 3 frames a second needs little: 3 Mbit/s stalled the glasses' stream about
+  // fifteen seconds in, every take. 1.2 is ample for 720p stills at this rate.
+  streamBitrate: int('STREAM_BITRATE', 1_200_000),
+  captureFps: int('CAPTURE_FPS', 3),
+  frameRingSize: int('FRAME_RING_SIZE', 3),
+  // A spoken question is answered from what the camera saw when the person
+  // began to speak. Video reaches this laptop later than their voice does
+  // (encoding and buffering, against the mic's Bluetooth hop), so the frame
+  // for "the moment they started" arrives about this much after their first word.
+  frameLagMs: int('FRAME_LAG_MS', 1000),
+  // How often onFrame runs: 1 to 3 times a second.
+  framesPerSecond: Math.min(3, Math.max(1, int('FRAMES_PER_SECOND', 1))),
+
   // The toolkit's profile store, the pairing token and the tunnel address live here.
   dataDir: text('DATA_DIR', './data'),
   // The dashboard shows camera photos, so by default it answers this

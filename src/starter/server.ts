@@ -96,6 +96,11 @@ export function startServer(opts: { runtime: Runtime; store: ProfileStore; port:
       const photo = runtime.photo(path.slice('/api/photo/'.length).replace(/\.jpg$/, ''));
       return photo ? new Response(photo.jpeg, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' } }) : new Response('Not found', { status: 404 });
     }
+    // The live camera's newest frame, for the dashboard's small live view.
+    if (path === '/api/frame.jpg') {
+      const jpeg = runtime.latestFrame();
+      return jpeg ? new Response(jpeg, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' } }) : new Response('No frame', { status: 404 });
+    }
     if (path === '/api/profile' && req.method === 'GET') return json(await profileView());
     if (req.method !== 'POST') return new Response('Not found', { status: 404 });
     // The dashboard's own script sends JSON here. Another web page open in

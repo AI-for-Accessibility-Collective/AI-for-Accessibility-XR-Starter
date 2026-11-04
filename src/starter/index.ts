@@ -66,6 +66,11 @@ export interface Glasses {
    * Take a photo with the glasses camera (the phone camera when the phone acts as the glasses).
    * mode 'text' tunes the camera for reading print.
    * Takes a few seconds, longer when the photo travels over Bluetooth.
+   *
+   * With the live camera (`camera: 'live'`, or an app with `onFrame`) it
+   * returns the newest picture at once. Inside onSpeech, it is the picture
+   * from the moment the person began to speak. `size` and `mode` are
+   * ignored then: the picture is a 1280×720 video frame.
    */
   takePhoto(opts?: { size?: 'low' | 'medium' | 'high'; mode?: 'photo' | 'text' }): Promise<Photo>;
 
@@ -132,12 +137,29 @@ export interface AppDefinition {
    * rooms and for button-first apps.
    */
   listen?: 'always' | 'when-asked';
+  /**
+   * 'photos' (default): g.takePhoto asks the glasses for a photo each time, a few seconds each.
+   * 'live': the glasses stream video to the laptop while the app runs, and
+   * g.takePhoto returns the newest picture at once. Needs the glasses on a
+   * Wi-Fi network that reaches the laptop, and ffmpeg on the laptop. An app
+   * with onFrame uses the live camera too. With the phone as the glasses,
+   * photos come from the phone camera as before.
+   */
+  camera?: 'photos' | 'live';
   /** Start was pressed (on the phone or the dashboard). */
   onStart?(g: Glasses): void | Promise<void>;
   /** The person said something. `text` is already written down. */
   onSpeech?(text: string, g: Glasses): void | Promise<void>;
   /** The person pressed the glasses button. */
   onButton?(button: ButtonPress, g: Glasses): void | Promise<void>;
+  /**
+   * The live camera's newest picture, about once a second (FRAMES_PER_SECOND
+   * in .env). A call that is still running is left to finish; the next
+   * picture is skipped. It runs next to onSpeech and onButton. Gemini calls
+   * from here count toward the spending guard: ask every few seconds, and
+   * compare answers before speaking. Not called with the phone as the glasses.
+   */
+  onFrame?(frame: Photo, g: Glasses): void | Promise<void>;
   /** Stop was pressed. g.say() is silent from now on. */
   onStop?(g: Glasses): void | Promise<void>;
 }

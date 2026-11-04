@@ -50,6 +50,10 @@ export type UpMessage =
   | { t: 'talk-end' }
   // Answers a DownRequest once the device is done with it.
   | { t: 'reply'; id: number; ok: boolean; detail?: string }
+  // What the glasses say about their own camera stream (starting, streaming,
+  // reconnecting, error…), passed on so a stalled stream explains itself in
+  // the dashboard log.
+  | { t: 'camera-status'; status: string; detail?: string }
   | { t: 'ping' };
 
 // ── server → device ──────────────────────────────────────────────────────────
@@ -61,7 +65,13 @@ export type DownRequest =
   // Take a photo and upload it (multipart: `photo` file + `requestId`) to
   // uploadPath on this server. The reply comes after the upload.
   // transfer 'ble': the photo must go through the phone over Bluetooth.
-  | { t: 'photo'; id: number; requestId: string; uploadPath: string; size: PhotoSize; mode: 'photo' | 'text'; transfer: 'auto' | 'ble' };
+  | { t: 'photo'; id: number; requestId: string; uploadPath: string; size: PhotoSize; mode: 'photo' | 'text'; transfer: 'auto' | 'ble' }
+  // The live camera (camera.ts): make the glasses publish video to `url`, an
+  // RTMP address on the laptop. The laptop picks the picture size, so it can
+  // be tuned without rebuilding the app. The reply comes once the glasses
+  // report the stream as started. Glasses only; a simulator refuses it.
+  | { t: 'camera-start'; id: number; url: string; fps: number; width: number; height: number; bitrate: number }
+  | { t: 'camera-stop'; id: number };
 
 export type LightColor = 'red' | 'green' | 'blue' | 'orange' | 'white';
 
