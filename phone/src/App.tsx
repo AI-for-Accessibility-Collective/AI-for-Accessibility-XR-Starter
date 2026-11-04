@@ -139,6 +139,8 @@ export default function App() {
   const wifi = g.connected ? g.wifi : null;
   const wifiOn = wifi ? wifi.state === 'connected' : null;
   const battery = g.connected ? g.battery.level : null;
+  // The name to look for in Bluetooth settings.
+  const glassesName = (g.connected ? g.device.bluetoothName : undefined) ?? mentra.defaultDevice?.name ?? null;
   const [scanned, setScanned] = useState(false);
 
   // ── Glasses software ──────────────────────────────────────────────────────
@@ -652,12 +654,17 @@ export default function App() {
         <View style={[s.dot, { backgroundColor: c.ok }]} />
         <Text style={[s.doneText, { color: c.text }]}>Glasses connected{battery != null ? ` · Battery ${battery}%` : ''}</Text>
       </View>
+      {glassesName ? (
+        <Text selectable style={[s.help, { color: c.textMuted }]}>
+          {glassesName}
+        </Text>
+      ) : null}
       {Platform.OS === 'ios' ? (
-        <Text style={[s.help, { color: c.textMuted }]}>To hear the app in the glasses, also pick them in Settings › Bluetooth.</Text>
+        <Text style={[s.help, { color: c.textMuted }]}>For sound, choose the glasses in Control Center › AirPlay.</Text>
       ) : glassesAudio ? null : (
         <View style={s.hint}>
           <Text style={[s.help, { color: c.textMuted }]}>
-            If the app’s voice comes from this phone, open Bluetooth settings, tap {mentra.defaultDevice?.name ?? 'the glasses'} and turn on Media audio.
+            If the app’s voice comes from this phone, open Bluetooth settings, tap {glassesName ?? 'the glasses'} and turn on Media audio.
           </Text>
           <Button label="Bluetooth settings" kind="secondary" size="small" onPress={() => void Linking.sendIntent('android.settings.BLUETOOTH_SETTINGS').catch(() => {})} />
         </View>

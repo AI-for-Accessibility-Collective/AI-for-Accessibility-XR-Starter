@@ -3,7 +3,7 @@
     "name": "XR Starter",
     "slug": "xr-starter-phone",
     "scheme": "xrstarter",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "icon": "./assets/icon.png",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
@@ -31,7 +31,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "edu.mit.media.xrstarter",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
