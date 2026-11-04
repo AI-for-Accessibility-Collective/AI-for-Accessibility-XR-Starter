@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" width="100%" alt="The XR Starter dashboard on a laptop, showing a photo of a living room and the app's spoken description of it. Beside it, a phone held sideways acts as the glasses, with its camera view, captions and a round glasses button.">
+  <img src="docs/images/hero.png" width="100%" alt="The XR Starter dashboard on a laptop, showing a photo of a residential street and the app's spoken description of it. Beside it, a phone held sideways acts as the glasses, with the same street in its camera view, a caption of the description, and a round glasses button.">
 </p>
 
 The starter handles the glasses, speech, photos and Gemini for you. The
@@ -68,7 +68,7 @@ on the phone and allow the install.
   <tr>
     <td align="center" width="25%"><img src="docs/images/phone-connect.png" width="190" alt="XR Starter on a phone: Connect to your laptop, with a Scan QR code button."></td>
     <td align="center" width="25%"><img src="docs/images/phone-choose.png" width="190" alt="XR Starter on a phone: Choose the glasses, with Connect glasses and Use this phone."></td>
-    <td align="center" width="50%"><img src="docs/images/phone-as-glasses.png" width="400" alt="The phone held sideways as the glasses: the camera view of a room, a caption from the app, and a round glasses button."></td>
+    <td align="center" width="50%"><img src="docs/images/phone-as-glasses.png" width="400" alt="The phone held sideways as the glasses: a residential street in the camera view, the app's description as a caption, and a round glasses button."></td>
   </tr>
   <tr>
     <td align="center"><b>1.</b> Press <b>Scan QR code</b> and point the phone at the dashboard.</td>
