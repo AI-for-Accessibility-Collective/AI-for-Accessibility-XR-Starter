@@ -173,7 +173,9 @@ export default function App() {
       BluetoothSdk.checkForOtaUpdate().then((needed) => id === checks.current && !needed && setUpdate('current'), () => {});
     } else checkGlasses();
   }, [ready]);
+  const [updateTick, setUpdateTick] = useState(0); // one per report from the glasses
   useBluetoothEvent('ota_status', (e) => {
+    setUpdateTick((n) => n + 1);
     if (e.status === 'in_progress' || e.status === 'step_complete') {
       setUpdate('running');
       setUpdatePercent(e.overall_percent);
@@ -186,6 +188,23 @@ export default function App() {
       setUpdateError(updateErrorText(e.error_message));
     }
   });
+  // Glasses that go quiet: older software accepts the update and then does
+  // nothing when its Wi-Fi has no internet. Limits as in Mentra's own update
+  // flow: 90 s to begin, and 6 min between reports once it runs (a system
+  // install reports little). A restart in between does not count.
+  useEffect(() => {
+    if (update !== 'running' || !g.connected) return;
+    const started = updatePercent > 0;
+    const timer = setTimeout(() => {
+      setUpdate('failed');
+      setUpdateError(
+        started
+          ? 'The glasses stopped reporting progress. Switch them off and on, then try again.'
+          : 'The glasses did not begin the download. Their Wi-Fi may have no internet: join a phone hotspot, then try again.',
+      );
+    }, started ? 6 * 60_000 : 90_000);
+    return () => clearTimeout(timer);
+  }, [update, g.connected, updatePercent > 0, updateTick]);
   const startUpdate = async () => {
     setUpdateError('');
     setUpdatePercent(0);
