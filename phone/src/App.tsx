@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   BackHandler,
   KeyboardAvoidingView,
   Linking,
@@ -37,7 +38,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { requestRecordingPermissionsAsync } from 'expo-audio';
 import type { CameraView } from 'expo-camera';
 import BluetoothSdk, { DeviceModels, type Device } from '@mentra/bluetooth-sdk';
-import { useMentraBluetooth } from '@mentra/bluetooth-sdk/react';
+import { useBluetoothEvent, useMentraBluetooth } from '@mentra/bluetooth-sdk/react';
 import type { Phase } from '../../src/starter/protocol.ts';
 import { announce, useAnnounce, useFocusOn } from './a11y';
 import { Button, Card, Field, Logo, Pulse, Screen, StatusRow, TypeBox, startHint } from './components';
@@ -49,28 +50,38 @@ import { DarkScreen, font, italic, radius, space, type, usePalette } from './the
 
 // Android asks for these at run time (iOS asks on first use, from the
 // descriptions in app.json). Location is on the list because Android 12+
-// delivers no scan results without it. Notifications (Android 13+) are for
-// the SDK's connection notice; the app works when they are refused.
-async function androidPermissions(): Promise<boolean> {
-  if (Platform.OS !== 'android') return true;
+// delivers no scan results without it. Notifications are left out: the SDK's
+// connection notice is optional, and each prompt is one more step.
+// After a second refusal Android stops asking, and Settings is the way back.
+async function androidPermissions(): Promise<'granted' | 'refused' | 'settings'> {
+  if (Platform.OS !== 'android') return 'granted';
   const needed = [
     PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
     PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
   ];
-  const optional = Number(Platform.Version) >= 33 ? [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] : [];
-  const results = await PermissionsAndroid.requestMultiple([...needed, ...optional]);
-  return needed.every((p) => results[p] === PermissionsAndroid.RESULTS.GRANTED);
+  const results = Object.values(await PermissionsAndroid.requestMultiple(needed));
+  const { GRANTED, NEVER_ASK_AGAIN } = PermissionsAndroid.RESULTS;
+  return results.every((r) => r === GRANTED) ? 'granted' : results.includes(NEVER_ASK_AGAIN) ? 'settings' : 'refused';
 }
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// Expo wraps a native error as "Call to function 'X' has been rejected.
+// → Caused by: <reason>". The reason is the part a person can act on.
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e)).split('→ Caused by:').pop()!.trim();
+const errorCode = (e: unknown) => (e && typeof e === 'object' && 'code' in e ? String(e.code) : '');
+const updateErrorText = (reason?: string) =>
+  reason === 'no_internet' ? 'The glasses’ Wi-Fi has no internet connection. Connect them to another network, then try again.'
+  : reason ? `The glasses reported: ${reason.replace(/_/g, ' ')}.`
+  : 'The glasses stopped the update.';
 
 export default function App() {
   useKeepAwake();
   const c = usePalette();
   const scheme = useColorScheme();
-  const [problem, setProblem] = useState('');
+  // What went wrong, and whether Settings is where to fix it.
+  const [{ problem, inSettings }, setProblemState] = useState({ problem: '', inSettings: false });
+  const setProblem = (text: string, settings = false) => setProblemState({ problem: text, inSettings: settings });
 
   // ── Laptop ────────────────────────────────────────────────────────────────
   const [laptop, setLaptopState] = useState<Laptop | null>(() => laptopStore.load());
@@ -110,12 +121,19 @@ export default function App() {
   }, []);
 
   // ── Glasses ───────────────────────────────────────────────────────────────
+  // Bluetooth switched off shows on the glasses card, with a way to turn it on.
+  // Other errors show in the notice at the bottom.
+  const [bluetoothOff, setBluetoothOff] = useState(false);
+  const glassesError = (e: unknown, prefix = '') => {
+    if (errorCode(e) === 'bluetooth_powered_off') setBluetoothOff(true);
+    else setProblem(prefix + errorText(e));
+  };
   const mentra = useMentraBluetooth({
     autoConnectDefault: true,
     defaultDeviceStorage: glassesStore,
     defaultModel: DeviceModels.MentraLive,
     scanTimeoutMs: 10_000,
-    onError: (e) => setProblem(errorText(e)),
+    onError: (e) => glassesError(e),
   });
   const g = mentra.glasses;
   const wifi = g.connected ? g.wifi : null;
@@ -123,10 +141,76 @@ export default function App() {
   const battery = g.connected ? g.battery.level : null;
   const [scanned, setScanned] = useState(false);
 
-  // The glasses button belongs to the app: no gallery photo on a press.
+  // ── Glasses software ──────────────────────────────────────────────────────
+  // The SDK works with the glasses software of its own release. Older glasses
+  // connect, and then their mic, button and camera fail, so the app checks
+  // after each connection and asks for the update before Start. The glasses
+  // download it over their Wi-Fi and restart during it, and the update goes
+  // on after each restart.
+  const [update, setUpdate] = useState<'unknown' | 'checking' | 'current' | 'needed' | 'running' | 'failed'>('unknown');
+  const [updatePercent, setUpdatePercent] = useState(0);
+  const [updateError, setUpdateError] = useState('');
+  const ready = g.connected && g.ready;
+  const checks = useRef(0);
+  const checkGlasses = () => {
+    const id = ++checks.current;
+    setUpdate('checking');
+    BluetoothSdk.checkForOtaUpdate().then(
+      (needed) => id === checks.current && setUpdate(needed ? 'needed' : 'current'),
+      // Without an answer (no internet on the phone), the glasses are used as they are.
+      () => id === checks.current && setUpdate('current'),
+    );
+  };
   useEffect(() => {
-    if (g.connected && g.ready) void mentra.setGalleryModeEnabled(false).catch(() => {});
-  }, [g.connected, g.connected && g.ready]);
+    if (!ready) {
+      if (update !== 'running') {
+        checks.current++;
+        setUpdate('unknown');
+      }
+    } else if (update === 'running') {
+      // Back after a restart during the update: finished when nothing is left to install.
+      const id = ++checks.current;
+      BluetoothSdk.checkForOtaUpdate().then((needed) => id === checks.current && !needed && setUpdate('current'), () => {});
+    } else checkGlasses();
+  }, [ready]);
+  useBluetoothEvent('ota_status', (e) => {
+    if (e.status === 'in_progress' || e.status === 'step_complete') {
+      setUpdate('running');
+      setUpdatePercent(e.overall_percent);
+    } else if (e.status === 'complete' && update === 'running') {
+      announce('The glasses update finished.');
+      checkGlasses();
+    } else if (e.status === 'failed' && update === 'running') {
+      // On connecting, the glasses also report an earlier update. It counts during an update only.
+      setUpdate('failed');
+      setUpdateError(updateErrorText(e.error_message));
+    }
+  });
+  const startUpdate = async () => {
+    setUpdateError('');
+    setUpdatePercent(0);
+    setUpdate('running');
+    try {
+      await BluetoothSdk.startOtaUpdate();
+    } catch (e) {
+      setUpdate('failed');
+      setUpdateError(errorText(e));
+    }
+  };
+
+  // Speech reaches the glasses through the phone's Bluetooth media audio,
+  // which the phone connects next to the SDK's own link. Until it does, the
+  // phone's speaker plays it.
+  const [glassesAudio, setGlassesAudio] = useState(false);
+  useBluetoothEvent('audio_connected', () => setGlassesAudio(true));
+  useBluetoothEvent('audio_disconnected', () => setGlassesAudio(false));
+  useBluetoothEvent('audio_pairing_needed', () => setGlassesAudio(false));
+
+  // The glasses button belongs to the app: no gallery photo on a press.
+  // Straight to the SDK, so a slow answer from the glasses stays out of the notice.
+  useEffect(() => {
+    if (ready && update === 'current') void BluetoothSdk.setGalleryModeEnabled(false).catch(() => {});
+  }, [ready, update === 'current']);
 
   // ── This phone as the glasses ─────────────────────────────────────────────
   const [mode, setModeState] = useState<Mode>(() => modeStore.load());
@@ -165,13 +249,18 @@ export default function App() {
 
   const scan = async () => {
     setProblem('');
-    if (!(await androidPermissions())) return setProblem('Allow Bluetooth, location and the microphone to find your glasses. Android needs location to scan for Bluetooth devices.');
+    const allowed = await androidPermissions();
+    if (allowed !== 'granted') {
+      return allowed === 'settings'
+        ? setProblem('To find your glasses, allow Nearby devices, Location and Microphone for XR Starter in Settings › Permissions.', true)
+        : setProblem('Allow Bluetooth, location and the microphone to find your glasses. Android needs location to scan for Bluetooth devices.');
+    }
+    setBluetoothOff(false);
     try {
       await mentra.scan.start();
-    } catch (e) {
-      setProblem(errorText(e));
-    } finally {
       setScanned(true);
+    } catch (e) {
+      glassesError(e);
     }
   };
   const connect = async (device: Device) => {
@@ -180,9 +269,31 @@ export default function App() {
       await mentra.connect(device);
       await mentra.setDefaultDevice(device);
     } catch (e) {
-      setProblem(`Could not connect to ${device.name}. ${errorText(e)}`);
+      glassesError(e, `Could not connect to ${device.name}. `);
     }
   };
+  // Android asks "Turn on Bluetooth?" over the app. iOS leaves it to Control
+  // Center. Back in the app, the search starts again, after Bluetooth has had
+  // a moment to switch on.
+  const turnOnBluetooth = () =>
+    void Linking.sendIntent('android.bluetooth.adapter.action.REQUEST_ENABLE')
+      .catch(() => Linking.sendIntent('android.settings.BLUETOOTH_SETTINGS'))
+      .catch(() => {});
+  const scanRef = useRef(scan);
+  scanRef.current = scan;
+  useEffect(() => {
+    if (!bluetoothOff) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sub = AppState.addEventListener('change', (now) => {
+      if (now !== 'active') return;
+      clearTimeout(timer);
+      timer = setTimeout(() => void scanRef.current(), 1500);
+    });
+    return () => {
+      sub.remove();
+      clearTimeout(timer);
+    };
+  }, [bluetoothOff]);
   const forgetGlasses = () =>
     Alert.alert('Disconnect the glasses?', 'This phone will stop reconnecting to them on its own.', [
       { text: 'Cancel', style: 'cancel' },
@@ -212,7 +323,12 @@ export default function App() {
 
   // ── Where the person is ───────────────────────────────────────────────────
   const linkState = g.connected ? 'connected' : g.connection.state;
-  const blockedBy = link.status !== 'connected' ? 'Connecting to the laptop…' : !g.connected ? 'Connect the glasses first.' : null;
+  const blockedBy =
+    link.status !== 'connected' ? 'Connecting to the laptop…'
+    : !g.connected ? 'Connect the glasses first.'
+    : update === 'unknown' || update === 'checking' ? 'Checking the glasses software…'
+    : update !== 'current' ? 'Update the glasses first.'
+    : null;
   const toggleApp = () => {
     if (active || (link.status === 'connected' && (mode === 'phone' || !blockedBy))) link.setActive(!active);
   };
@@ -251,6 +367,7 @@ export default function App() {
   useAnnounce(news);
   useAnnounce(state?.problem ? `Problem: ${state.problem}` : '');
   useAnnounce(problem ? `Problem: ${problem}` : '');
+  useAnnounce(update === 'failed' ? `Problem: the glasses update stopped. ${updateError}` : '');
   // Start, Stop and the glasses: on a change, and not for the first value.
   const wasActive = useRef<boolean | null>(null);
   useEffect(() => {
@@ -265,9 +382,12 @@ export default function App() {
   }, [g.connected]);
 
   // One step at a time: the laptop, then the glasses, then the app.
-  const step: 'laptop' | 'glasses' | 'app' =
-    !laptop || formOpen || !reached || away || link.status === 'refused' || link.status === 'replaced' ? 'laptop'
+  // A running update stays on screen while the glasses restart, and needs no laptop.
+  const step: 'laptop' | 'glasses' | 'update' | 'app' =
+    update === 'running' ? 'update'
+    : !laptop || formOpen || !reached || away || link.status === 'refused' || link.status === 'replaced' ? 'laptop'
     : !g.connected ? 'glasses'
+    : update === 'needed' || update === 'failed' ? 'update'
     : 'app';
   // Back on this screen, or on a new step: the screen reader starts at the step's title.
   const titleRef = useRef<Text>(null);
@@ -316,6 +436,15 @@ export default function App() {
     );
   }
 
+  // On the glasses step it sits under the glasses card, next to the button that caused it.
+  const problemNotice = problem ? (
+    <View style={[s.notice, { backgroundColor: c.dangerSoft, borderColor: c.danger }]}>
+      <Text style={[s.noticeText, { color: c.text }]}>{problem}</Text>
+      {inSettings ? <Button label="Open Settings" size="small" onPress={() => void Linking.openSettings()} /> : null}
+      <Button label="Dismiss" kind="quiet" size="small" onPress={() => setProblem('')} />
+    </View>
+  ) : null;
+
   // ── Step 1: the laptop ──────────────────────────────────────────────────
   const laptopCopy =
     formOpen ? { title: 'Connect to your laptop', text: 'Type the address and the pairing code from the dashboard. They are under “The phone cannot connect?”.' }
@@ -357,8 +486,10 @@ export default function App() {
 
   // ── Step 2: the glasses ─────────────────────────────────────────────────
   const devices = mentra.scan.devices;
+  const searching = mentra.scan.active || linkState === 'scanning';
   const glassesText =
-    linkState === 'scanning' ? 'Looking for glasses nearby…'
+    bluetoothOff ? (Platform.OS === 'android' ? 'Bluetooth is off on this phone. The glasses connect over Bluetooth.' : 'Bluetooth is off on this phone. Turn it on in Control Center, then search again.')
+    : searching ? 'Looking for glasses nearby…'
     : linkState !== 'disconnected' ? `Connecting to ${mentra.defaultDevice?.name ?? 'the glasses'}…`
     : devices.length ? 'Choose your glasses.'
     : scanned ? 'No glasses found. Check that they are switched on and close to this phone. Close the Mentra app, which can hold the connection.'
@@ -374,16 +505,76 @@ export default function App() {
       <Card>
         <Text style={[s.choiceTitle, { color: c.text }]} accessibilityRole="header">Mentra Live glasses</Text>
         <Text style={[s.body, { color: c.textMuted }]}>{glassesText}</Text>
-        {devices.map((d) => <Button key={d.id} label={`Connect to ${d.name}`} disabled={mentra.busy} onPress={() => void connect(d)} />)}
-        {linkState === 'disconnected' && !devices.length ? (
+        {bluetoothOff ? null : devices.map((d) => <Button key={d.id} label={`Connect to ${d.name}`} disabled={mentra.busy} onPress={() => void connect(d)} />)}
+        {bluetoothOff ? (
+          Platform.OS === 'android' ? <Button label="Turn on Bluetooth" onPress={turnOnBluetooth} /> : <Button label="Search again" onPress={() => void scan()} />
+        ) : linkState === 'disconnected' && !searching && !devices.length ? (
           <Button label={scanned ? 'Search again' : 'Connect glasses'} disabled={mentra.busy} onPress={() => void scan()} />
         ) : null}
       </Card>
+      {problemNotice}
       <Card>
         <Text style={[s.choiceTitle, { color: c.text }]} accessibilityRole="header">This phone</Text>
         <Text style={[s.body, { color: c.textMuted }]}>No glasses? The phone’s camera, microphone and speaker stand in for them.</Text>
         <Button label="Use this phone" hint="The phone acts as the glasses. Hold it sideways at eye level." onPress={enterPhone} />
       </Card>
+    </>
+  );
+
+  // The glasses' Wi-Fi: for the update, and for quicker photos.
+  const wifiForm = (
+    <>
+      <Field label="Network name" value={ssid} onChangeText={setSsid} />
+      <Field label="Password" value={password} onChangeText={setPassword} secure />
+      <View style={s.row}>
+        <Button label={joining ? 'Joining…' : 'Join'} flex disabled={!ssid.trim() || joining} onPress={() => void joinWifi()} />
+        <Button label="Cancel" kind="secondary" flex onPress={() => setWifiOpen(false)} />
+      </View>
+    </>
+  );
+
+  // ── Step 3, when the glasses need it: the update ────────────────────────
+  const updateText =
+    update === 'running'
+      ? g.connected ? `Updating the glasses… ${updatePercent}%` : 'The glasses are restarting as part of the update. This phone reconnects to them on its own.'
+    : update === 'failed' ? `The update stopped. ${updateError}`
+    : 'These glasses need a software update to work with XR Starter. They download it over Wi-Fi.';
+  const updateAction =
+    update === 'running' || !g.connected ? null
+    : wifiOpen ? wifiForm
+    : !wifiOn ? (
+      <>
+        <Text style={[s.body, { color: c.textMuted }]}>First, connect the glasses to a Wi-Fi network with internet.</Text>
+        <Button label="Connect the glasses to Wi-Fi" size="large" onPress={() => setWifiOpen(true)} />
+      </>
+    ) : (
+      <>
+        {wifi?.state === 'connected' ? <Text style={[s.body, { color: c.textMuted }]}>Glasses Wi-Fi: {wifi.ssid}</Text> : null}
+        <Button label={update === 'failed' ? 'Try again' : 'Update the glasses'} size="large" onPress={() => void startUpdate()} />
+        {update === 'failed' ? <Button label="Change the Wi-Fi" kind="quiet" onPress={() => setWifiOpen(true)} /> : null}
+      </>
+    );
+  const updateStep = (
+    <>
+      <Text ref={titleRef} style={[s.stepTitle, { color: c.text }]} accessibilityRole="header">Update the glasses</Text>
+      <Card>
+        <Text style={[s.body, { color: c.text }]}>{updateText}</Text>
+        {update === 'running' ? (
+          <>
+            <View
+              style={[s.progress, { backgroundColor: c.surfaceAlt }]}
+              accessible
+              accessibilityRole="progressbar"
+              accessibilityLabel="Update progress"
+              accessibilityValue={{ min: 0, max: 100, now: updatePercent }}
+            >
+              <View style={[s.progressFill, { width: `${updatePercent}%`, backgroundColor: c.accentFill }]} />
+            </View>
+            <Text style={[s.body, { color: c.textMuted }]}>Keep the glasses switched on and close to this phone, with XR Starter open. They restart during the update.</Text>
+          </>
+        ) : updateAction}
+      </Card>
+      {update === 'running' ? null : <Button label="Use this phone as the glasses instead" kind="quiet" onPress={enterPhone} />}
     </>
   );
 
@@ -444,7 +635,14 @@ export default function App() {
       </View>
       {Platform.OS === 'ios' ? (
         <Text style={[s.help, { color: c.textMuted }]}>To hear the app in the glasses, also pick them in Settings › Bluetooth.</Text>
-      ) : null}
+      ) : glassesAudio ? null : (
+        <View style={s.hint}>
+          <Text style={[s.help, { color: c.textMuted }]}>
+            If the app’s voice comes from this phone, open Bluetooth settings, tap {mentra.defaultDevice?.name ?? 'the glasses'} and turn on Media audio.
+          </Text>
+          <Button label="Bluetooth settings" kind="secondary" size="small" onPress={() => void Linking.sendIntent('android.settings.BLUETOOTH_SETTINGS').catch(() => {})} />
+        </View>
+      )}
 
       <Pressable
         onPress={() => setMoreOpen(!moreOpen)}
@@ -464,16 +662,7 @@ export default function App() {
             detail={wifiOn && wifi?.state === 'connected' ? `On “${wifi.ssid}”. Photos go straight to the laptop.` : 'Off. Photos reach the laptop faster over Wi-Fi.'}
             action={!wifiOn && !wifiOpen ? { label: 'Set up', onPress: () => setWifiOpen(true) } : undefined}
           >
-            {wifiOpen ? (
-              <>
-                <Field label="Network name" value={ssid} onChangeText={setSsid} />
-                <Field label="Password" value={password} onChangeText={setPassword} secure />
-                <View style={s.row}>
-                  <Button label={joining ? 'Joining…' : 'Join'} flex disabled={!ssid.trim() || joining} onPress={() => void joinWifi()} />
-                  <Button label="Cancel" kind="secondary" flex onPress={() => setWifiOpen(false)} />
-                </View>
-              </>
-            ) : null}
+            {wifiOpen ? wifiForm : null}
           </StatusRow>
           <Divider />
           <Button label="Use this phone as the glasses" kind="secondary" onPress={enterPhone} />
@@ -493,13 +682,8 @@ export default function App() {
             <Logo />
             <Text style={[s.title, { color: c.text }]}>XR Starter</Text>
           </View>
-          {step === 'laptop' ? laptopStep : step === 'glasses' ? glassesStep : appStep}
-          {problem ? (
-            <View style={[s.notice, { backgroundColor: c.dangerSoft, borderColor: c.danger }]}>
-              <Text style={[s.noticeText, { color: c.text }]}>{problem}</Text>
-              <Button label="Dismiss" kind="quiet" size="small" onPress={() => setProblem('')} />
-            </View>
-          ) : null}
+          {step === 'laptop' ? laptopStep : step === 'glasses' ? glassesStep : step === 'update' ? updateStep : appStep}
+          {step === 'glasses' ? null : problemNotice}
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -540,6 +724,9 @@ const s = StyleSheet.create({
   moreText: { ...font('600'), fontSize: type.body },
   row: { flexDirection: 'row', gap: space.md },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: space.xs },
+  hint: { gap: space.sm, alignItems: 'flex-start' },
+  progress: { height: 10, borderRadius: radius.pill, overflow: 'hidden' },
+  progressFill: { height: '100%' },
   notice: { borderWidth: 1, borderRadius: radius.md, padding: space.md, gap: space.xs },
   noticeText: { ...font(), fontSize: type.body, lineHeight: 22 },
   pressed: { opacity: 0.8 },

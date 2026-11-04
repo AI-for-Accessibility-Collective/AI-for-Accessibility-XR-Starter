@@ -16,10 +16,14 @@ to run the glasses hand-offs on the day.
 ## A week before
 
 1. **Glasses software.** The phone app uses Mentra Bluetooth SDK 3.1.1. The
-   glasses must run the matching 3.1.1 software. If the Wearable Task Guide
-   app works with the glasses, they already match. Do not update the glasses
-   unless you also rebuild the app with the matching SDK (`phone/README.md`,
-   Versions).
+   glasses must run the matching 3.1.1 software: with older software they
+   connect, and then the mic, the button and the camera fail. XR Starter
+   checks this when the glasses connect, and shows **Update the glasses**
+   when they need it. Update each pair before the event, on a Wi-Fi network
+   with internet for the glasses; the glasses restart during the update.
+   Updates from the Mentra app install a different release, so update
+   through XR Starter (or rebuild the app with the matching SDK,
+   `phone/README.md`, Versions).
 2. **Share the phone app**, so teams can install it on their own phones
    (`phone/README.md`, Share the app):
    - Android: push a tag such as `phone-v0.1.0`. The workflow publishes
@@ -80,6 +84,8 @@ to run the glasses hand-offs on the day.
 | Problem | Fix |
 |---|---|
 | No sound in the glasses (iPhone) | Settings › Bluetooth: choose the glasses. Check the phone's volume. |
+| No sound in the glasses (Android) | Settings › Connected devices: tap the glasses and turn on Media audio. The app shows a Bluetooth settings button for this. |
+| "The glasses' Wi-Fi has no internet connection" during the update | Join the glasses to another network in the app (a phone hotspot works), then press Try again. |
 | Scan finds no glasses (Android) | Switch Location on in the phone's quick settings, and allow location for XR Starter. Android 12+ withholds Bluetooth scan results without it. |
 | The QR code does not open the app (Android) | Some camera apps show the link as text. Press **Scan QR code** in XR Starter, or **Type it in instead**. |
 | The glasses do not show up in Scan | Close the Mentra app and other glasses apps, which can hold the connection. Restart the glasses. |

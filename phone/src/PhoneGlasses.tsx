@@ -126,8 +126,10 @@ export function PhoneGlasses(props: {
   const title = state?.app ?? 'XR Starter';
   const c = usePalette();
   const { screenReader, reduceMotion } = useA11ySettings();
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const landscape = width > height;
+  // The side column widens with the control labels, up to their 1.4x cap.
+  const railWidth = RAIL * Math.min(Math.max(fontScale, 1), CONTROL_TEXT_MAX);
   const [camera, requestCamera] = useCameraPermissions();
   const [captionsChosen, setCaptionsChosen] = useState(() => showTextStore.load());
   const [typing, setTyping] = useState(false);
@@ -242,7 +244,7 @@ export function PhoneGlasses(props: {
           >
             {active ? <Pulse color={state?.phase === 'listening' ? c.ok : c.accent} active /> : null}
             <View style={s.shrink}>
-              <Text style={s.chipTitle} numberOfLines={1}>{title}</Text>
+              <Text style={s.chipTitle} numberOfLines={2}>{title}</Text>
               <Text style={s.chipStatus} numberOfLines={2}>{statusLine}</Text>
             </View>
           </View>
@@ -336,14 +338,25 @@ export function PhoneGlasses(props: {
     <Screen style={[s.root, { backgroundColor: c.bg }]} onMagicTap={magicTap} onAccessibilityEscape={props.onLeave}>
       <StatusBar barStyle="light-content" hidden={landscape} />
       <KeyboardAvoidingView style={s.flex} behavior="padding">
-        {landscape ? (
-          <View style={[s.flex, s.row]}>
-            <View style={[s.flex, s.cameraCol]}>
-              {cameraArea}
-              {typeBar}
+        {/* The camera keeps its place in the tree in both orientations, so turning the phone
+            keeps the same camera view. On Android, a closing camera view releases the camera
+            of the view that replaces it. */}
+        <View style={[s.flex, landscape ? s.row : s.portrait]}>
+          {landscape ? null : (
+            <View style={s.topRow}>
+              {exitControl}
+              <View style={s.flex} />
+              {captionsControl}
+              {typeControl}
             </View>
-            {/* The column scrolls when the keyboard or large text leaves it short. */}
-            <ScrollView style={s.rail} contentContainerStyle={s.railInner} keyboardShouldPersistTaps="handled">
+          )}
+          <View style={[s.flex, s.cameraCol, landscape ? s.cameraSide : null]}>
+            {cameraArea}
+            {typeBar}
+          </View>
+          {landscape ? (
+            // The column scrolls when the keyboard or large text leaves it short.
+            <ScrollView style={[s.rail, { width: railWidth }]} contentContainerStyle={s.railInner} keyboardShouldPersistTaps="handled">
               {exitControl}
               {glassesButton}
               <View style={s.railGroup}>
@@ -351,20 +364,10 @@ export function PhoneGlasses(props: {
                 {typeControl}
               </View>
             </ScrollView>
-          </View>
-        ) : (
-          <View style={[s.flex, s.portrait]}>
-            <View style={s.topRow}>
-              {exitControl}
-              <View style={s.flex} />
-              {captionsControl}
-              {typeControl}
-            </View>
-            {cameraArea}
-            {typeBar}
+          ) : (
             <View style={s.bottom}>{glassesButton}</View>
-          </View>
-        )}
+          )}
+        </View>
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -431,6 +434,7 @@ function TypeBar(props: { onSend: (text: string) => void }) {
 }
 
 const BIG = 96;
+const RAIL = 168;
 
 const s = StyleSheet.create({
   root: { flex: 1 },
@@ -438,9 +442,10 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row' },
   shrink: { flexShrink: 1 },
   center: { textAlign: 'center' },
+  cameraCol: { gap: space.sm },
   // Landscape: the camera, and the control column at the side.
-  cameraCol: { padding: space.sm, paddingRight: 0, gap: space.sm },
-  rail: { width: 168, flexGrow: 0 },
+  cameraSide: { padding: space.sm, paddingRight: 0 },
+  rail: { flexGrow: 0 },
   railInner: { flexGrow: 1, justifyContent: 'space-between', alignItems: 'stretch', padding: space.sm, gap: space.md },
   railGroup: { gap: space.sm },
   // Portrait: the controls above the camera, the glasses button below it.
