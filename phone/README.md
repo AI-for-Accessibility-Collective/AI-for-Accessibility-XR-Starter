@@ -30,10 +30,13 @@ What it does:
 ## Versions
 
 The Bluetooth SDK and the glasses software must be the same release. This app
-uses **SDK 3.1.1**, the same as the AI for Accessibility XR phone app, so the
-same glasses work with both. If you update the glasses to a newer release,
-change `@mentra/bluetooth-sdk` in `package.json` to match, run `bun install`,
-and rebuild. See [Update Mentra Live](https://docs.mentraglass.com/bluetooth-sdk/software-update).
+uses **SDK 3.3.0**, the current release, which the Mentra app also installs on
+the glasses. With glasses on an older release, the mic, the button and the
+camera fail; with an older SDK and current glasses, the live camera is refused
+("native stream controller probing is required"). When Mentra publishes a
+newer release, update the glasses, change `@mentra/bluetooth-sdk` in
+`package.json` to match, run `bun install` and `pod install`, and rebuild. See
+[Update Mentra Live](https://docs.mentraglass.com/bluetooth-sdk/software-update).
 
 ## Build it (iPhone)
 

@@ -15,15 +15,15 @@ to run the glasses hand-offs on the day.
 
 ## A week before
 
-1. **Glasses software.** The phone app uses Mentra Bluetooth SDK 3.1.1. The
-   glasses must run the matching 3.1.1 software: with older software they
-   connect, and then the mic, the button and the camera fail. XR Starter
-   checks this when the glasses connect, and shows **Update the glasses**
-   when they need it. Update each pair before the event, on a Wi-Fi network
-   with internet for the glasses; the glasses restart during the update.
-   Updates from the Mentra app install a different release, so update
-   through XR Starter (or rebuild the app with the matching SDK,
-   `phone/README.md`, Versions).
+1. **Glasses software.** The phone app uses Mentra Bluetooth SDK 3.3.0, the
+   current release, and the glasses must run the matching software. With
+   older software they connect, and then the mic, the button, the camera and
+   the live camera fail. Update each pair before the event, from the Mentra
+   app on a phone, or from XR Starter, which checks the glasses when they
+   connect and shows **Update the glasses**. The glasses need a Wi-Fi network
+   with internet, and they restart during the update. When Mentra publishes
+   a newer release, update the glasses and the SDK together
+   (`phone/README.md`, Versions).
 2. **Share the phone app**, so teams can install it on their own phones
    (`phone/README.md`, Share the app):
    - Android: push a tag such as `phone-v0.1.0`. The workflow publishes

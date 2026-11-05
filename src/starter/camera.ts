@@ -177,6 +177,7 @@ export class LiveCamera {
 
   private async tryStartCamera(url: string): Promise<void> {
     for (let attempt = 1; attempt <= CAMERA_RETRIES; attempt++) {
+      if (!this.wanted) break; // Stop was pressed during the wait between attempts
       try {
         await this.deps.startStream(url, { fps: config.frameRate, width: config.streamWidth, height: config.streamHeight, bitrate: config.streamBitrate });
         if (!this.wanted) return void this.deps.stopStream();
