@@ -266,8 +266,8 @@ export function startServer(opts: { runtime: Runtime; store: ProfileStore; port:
           camera: m.device === 'glasses' ? 'glasses' : m.camera === 'phone' ? 'phone' : 'webcam',
           glasses:
             m.device !== 'glasses' ? null
-            : m.glasses ? { connected: !!m.glasses.connected, wifi: m.glasses.wifi ?? null, battery: m.glasses.battery ?? null }
-            : { connected: false, wifi: null, battery: null },
+            : m.glasses ? { connected: !!m.glasses.connected, wifi: m.glasses.wifi ?? null, battery: m.glasses.battery ?? null, ssid: m.glasses.ssid ?? null, ip: m.glasses.ip ?? null }
+            : { connected: false, wifi: null, battery: null, ssid: null, ip: null },
           send: (msg) => {
             if (ws.readyState === 1) ws.send(JSON.stringify(msg));
           },

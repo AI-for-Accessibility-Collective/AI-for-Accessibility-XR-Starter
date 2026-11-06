@@ -263,7 +263,11 @@ export default function App() {
     [mode],
   );
 
-  const link = useLink(mode === 'phone' && micAllowed === null ? null : laptop, { connected: g.connected, wifi: wifiOn, battery }, phone);
+  const link = useLink(
+    mode === 'phone' && micAllowed === null ? null : laptop,
+    { connected: g.connected, wifi: wifiOn, battery, ssid: wifi?.state === 'connected' ? wifi.ssid : null, ip: wifi?.state === 'connected' ? (wifi.localIp ?? null) : null },
+    phone,
+  );
   const state = link.state;
   const active = !!state?.active;
   const phase: Phase = state?.phase ?? 'off';
@@ -344,10 +348,14 @@ export default function App() {
     setJoining(true);
     try {
       const r = await BluetoothSdk.sendWifiCredentials(ssid.trim(), password);
-      if (r.state === 'connected') {
+      // The glasses fall back to a network they know when the new one fails,
+      // and then report "connected" to that one. Joined means joined the one asked for.
+      if (r.state === 'connected' && r.ssid === ssid.trim()) {
         setPassword('');
         setWifiOpen(false);
-      } else setProblem(r.error === 'wrong_password' ? 'That Wi-Fi password did not work.' : `The glasses could not join “${ssid.trim()}”.`);
+      } else if (r.error === 'wrong_password') setProblem('That Wi-Fi password did not work.');
+      else if (r.state === 'connected') setProblem(`The glasses could not find “${ssid.trim()}” and stayed on “${r.ssid}”. Check the network name, and that the network is on and uses 2.4 GHz.`);
+      else setProblem(`The glasses could not join “${ssid.trim()}”.`);
     } catch (e) {
       setProblem(errorText(e));
     } finally {

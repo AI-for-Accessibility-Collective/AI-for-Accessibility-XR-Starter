@@ -59,7 +59,7 @@ export interface PhoneParts {
 
 export function useLink(
   laptop: Laptop | null,
-  glasses: { connected: boolean; wifi: boolean | null; battery: number | null },
+  glasses: { connected: boolean; wifi: boolean | null; battery: number | null; ssid: string | null; ip: string | null },
   phone: PhoneParts | null,
 ): Link {
   const [status, setStatus] = useState<LinkStatus>(laptop ? 'connecting' : 'none');
@@ -499,8 +499,8 @@ export function useLink(
 
   // Keep the laptop told about the glasses.
   useEffect(() => {
-    if (!asPhone) send({ t: 'glasses', connected: glasses.connected, wifi: glasses.wifi, battery: glasses.battery });
-  }, [send, asPhone, glasses.connected, glasses.wifi, glasses.battery]);
+    if (!asPhone) send({ t: 'glasses', connected: glasses.connected, wifi: glasses.wifi, battery: glasses.battery, ssid: glasses.ssid, ip: glasses.ip });
+  }, [send, asPhone, glasses.connected, glasses.wifi, glasses.battery, glasses.ssid, glasses.ip]);
 
   return {
     status,

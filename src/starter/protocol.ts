@@ -34,14 +34,23 @@ export interface DeviceState {
 
 export type PhotoSize = 'low' | 'medium' | 'high';
 
+export interface GlassesReport {
+  connected: boolean;
+  wifi: boolean | null;
+  battery: number | null;
+  ssid?: string | null;
+  ip?: string | null;
+}
+
 // ── device → server ──────────────────────────────────────────────────────────
 export type UpMessage =
   // `resume`: the device was running before the connection dropped (or the
   // server restarted after a code change), so start again straight away.
   // `glasses`: their state right now, so an app that resumes at once knows it.
   // `camera` (simulators): which camera stands in for the glasses camera.
-  | { t: 'hello'; token: string; device: DeviceKind; name: string; resume?: boolean; camera?: 'webcam' | 'phone'; glasses?: { connected: boolean; wifi: boolean | null; battery: number | null } }
-  | { t: 'glasses'; connected: boolean; wifi: boolean | null; battery: number | null }
+  // `ssid` and `ip`: the glasses' Wi-Fi network and their address on it, when they are on one.
+  | { t: 'hello'; token: string; device: DeviceKind; name: string; resume?: boolean; camera?: 'webcam' | 'phone'; glasses?: GlassesReport }
+  | ({ t: 'glasses' } & GlassesReport)
   | { t: 'active'; on: boolean }
   // Typed instead of spoken.
   | { t: 'type'; text: string }

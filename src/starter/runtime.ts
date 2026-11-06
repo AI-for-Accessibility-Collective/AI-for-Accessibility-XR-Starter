@@ -44,6 +44,8 @@ export interface GlassesInfo {
   connected: boolean;
   wifi: boolean | null;
   battery: number | null;
+  ssid: string | null; // the glasses' Wi-Fi network
+  ip: string | null; // their address on it, so the laptop can check it reaches them
 }
 
 // One connected device, as the server hands it over.
@@ -749,7 +751,7 @@ export class Runtime {
     if (link !== this.device) return;
     switch (m.t) {
       case 'glasses':
-        link.glasses = { connected: !!m.connected, wifi: m.wifi ?? null, battery: m.battery ?? null };
+        link.glasses = { connected: !!m.connected, wifi: m.wifi ?? null, battery: m.battery ?? null, ssid: m.ssid ?? null, ip: m.ip ?? null };
         this.camera.glassesChanged();
         return this.pushState();
       case 'camera-status':

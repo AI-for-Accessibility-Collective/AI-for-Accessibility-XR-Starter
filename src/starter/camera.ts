@@ -186,12 +186,31 @@ export class LiveCamera {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         this.deps.log('warn', `Camera attempt ${attempt}/${CAMERA_RETRIES} failed: ${msg}`);
+        if (attempt === 1) await this.explainReach(url);
         if (!this.wanted || !this.deps.glasses()?.connected) break;
         if (attempt < CAMERA_RETRIES) await new Promise((r) => setTimeout(r, CAMERA_RETRY_DELAY_MS));
         else this.setState('failed', `The glasses camera did not start: ${msg}`);
       }
     }
     this.cameraStarted = false;
+  }
+
+  // The usual reason a stream fails to start: the glasses' Wi-Fi network
+  // does not reach this laptop (another network, or one with a sign-in page
+  // that the glasses cannot pass). The glasses report their address, so the
+  // laptop can test it and say so in plain words.
+  private async explainReach(url: string): Promise<void> {
+    const glasses = this.deps.glasses();
+    const where = glasses?.ssid ? ` on “${glasses.ssid}”` : '';
+    if (!glasses?.ip) return;
+    const ping = Bun.spawn(['ping', '-c', '1', '-W', '1500', glasses.ip], { stdout: 'ignore', stderr: 'ignore' });
+    const reached = (await ping.exited) === 0;
+    this.deps.log(
+      reached ? 'info' : 'warn',
+      reached
+        ? `The laptop reaches the glasses at ${glasses.ip}${where}. The glasses publish to ${url}.`
+        : `The laptop cannot reach the glasses at ${glasses.ip}${where}. The laptop is on ${url.replace(/^rtmp:\/\/([^/:]+).*$/, '$1')}. Put the glasses and the laptop on the same network, without a sign-in page (a phone hotspot works).`,
+    );
   }
 
   private stopCamera(): void {
