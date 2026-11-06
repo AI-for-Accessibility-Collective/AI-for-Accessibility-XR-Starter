@@ -240,6 +240,17 @@ docs/ORGANIZER.md   preparing the glasses and phones for the event
 
 </details>
 
+## Contact
+
+For a bug or a question about this repository, open an [issue](../../issues)
+here. For anything else, use the Collective's
+[contact form](https://forms.gle/pTH6nSKMXmqbx9Eg8) or email
+ai4a11y-collective-contact@googlegroups.com. The other routes, including
+those for security problems and code of conduct reports, are in the toolkit's
+[MAINTAINERS.md](https://github.com/AI-for-Accessibility-Collective/AI-for-Accessibility-Toolkit/blob/main/MAINTAINERS.md).
+For more about the project, see the Collective's website,
+[aiforaccessibilitycollective.org](https://aiforaccessibilitycollective.org).
+
 <br>
 
 <p align="center"><sub>
