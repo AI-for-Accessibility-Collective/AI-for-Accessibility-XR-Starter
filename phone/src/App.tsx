@@ -701,7 +701,7 @@ export default function App() {
             tone={wifiOn ? 'ok' : 'idle'}
             title="Glasses Wi-Fi"
             detail={wifiOn && wifi?.state === 'connected' ? `On “${wifi.ssid}”. Photos go straight to the laptop.` : 'Off. Photos reach the laptop faster over Wi-Fi.'}
-            action={!wifiOn && !wifiOpen ? { label: 'Set up', onPress: () => setWifiOpen(true) } : undefined}
+            action={wifiOpen ? undefined : { label: wifiOn ? 'Change' : 'Set up', onPress: () => setWifiOpen(true) }}
           >
             {wifiOpen ? wifiForm : null}
           </StatusRow>
