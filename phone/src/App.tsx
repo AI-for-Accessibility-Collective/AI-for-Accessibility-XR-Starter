@@ -315,6 +315,19 @@ export default function App() {
       clearTimeout(timer);
     };
   }, [bluetoothOff]);
+  // The phone keeps trying the pair it connected to last. With several pairs
+  // in the room, this stops that and lets the person pick another from the list.
+  const switchGlasses = async () => {
+    setProblem('');
+    try {
+      await BluetoothSdk.cancelConnectionAttempt().catch(() => {});
+      await BluetoothSdk.forget().catch(() => {});
+      await mentra.clearDefaultDevice();
+      await scan();
+    } catch (e) {
+      glassesError(e);
+    }
+  };
   const forgetGlasses = () =>
     Alert.alert('Disconnect the glasses?', 'This phone will stop reconnecting to them on its own.', [
       { text: 'Cancel', style: 'cancel' },
@@ -531,6 +544,8 @@ export default function App() {
           Platform.OS === 'android' ? <Button label="Turn on Bluetooth" onPress={turnOnBluetooth} /> : <Button label="Search again" onPress={() => void scan()} />
         ) : linkState === 'disconnected' && !searching && !devices.length ? (
           <Button label={scanned ? 'Search again' : 'Connect glasses'} disabled={mentra.busy} onPress={() => void scan()} />
+        ) : linkState !== 'disconnected' && !searching && !g.connected ? (
+          <Button label="Connect to a different pair" kind="secondary" hint="Stops this attempt and searches for glasses nearby" onPress={() => void switchGlasses()} />
         ) : null}
       </Card>
       {problemNotice}
